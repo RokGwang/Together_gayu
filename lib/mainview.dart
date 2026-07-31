@@ -284,7 +284,7 @@ class _IntroPageState extends State<IntroPage> {
                                 width: 80, height: 80,
                                 decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
                                 alignment: Alignment.center,
-                                child: Text("${region.name}의\n사진 더 보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                                child: Text("${region.name}\n관광지 사진\n더 보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                               ),
                             );
                           }

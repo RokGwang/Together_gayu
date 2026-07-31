@@ -4,6 +4,7 @@ import 'room.dart';
 import 'tab_widget/widget.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'photo.dart'; // 이 줄이 없으면 추가하세요.
 
 // ===== 지역 정보 모델 =====
 class RegionInfo {
@@ -159,6 +160,19 @@ class _IntroPageState extends State<IntroPage> {
   void showRegionPopup(RegionInfo region) {
     final pageContext = context;
 
+    void _showFullImage(String imageUrl) {
+      showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent, // 투명 배경
+          child: GestureDetector(
+            onTap: () => Navigator.pop(context), // 탭하면 닫기
+            child: Image.network(imageUrl),
+          ),
+        ),
+      );
+    }
+
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -239,42 +253,51 @@ class _IntroPageState extends State<IntroPage> {
                 ),
 
                 // [기능 추가] 사진 영역 삽입
+                // [기능 수정] 사진 영역
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 80,
                   child: FutureBuilder<List<dynamic>>(
-                    // 💡 여기서 region.name(천안, 아산 등)을 넣으면 API가 알아서 필터링해줍니다.
                     future: fetchGalleryByRegion(region.name),
                     builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
-                      }
-
+                      if (!snapshot.hasData) return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
                       final photos = snapshot.data!;
-                      if (photos.isEmpty) {
-                        return const Center(child: Text("사진 정보가 없습니다."));
-                      }
+                      if (photos.isEmpty) return const Center(child: Text("사진 정보가 없습니다."));
 
                       return ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        itemCount: photos.length,
+                        itemCount: photos.length > 3 ? 4 : photos.length,
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
-                          // 💡 API 필드명에 맞게 'galWebImageUrl' 사용
+                          // 4번째 버튼: 사진 더 보기
+                          if (index == 3) {
+                            return InkWell(
+                              onTap: () {
+                                // [기능 추가] PhotoPage로 이동 (PhotoPage 클래스가 있다고 가정)
+                                Navigator.pop(dialogContext); // 팝업 닫기
+                                Navigator.push(
+                                  pageContext,
+                                  MaterialPageRoute(builder: (context) => PhotoPage(regionName: region.name)),
+                                );
+                              },
+                              child: Container(
+                                width: 80, height: 80,
+                                decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                                alignment: Alignment.center,
+                                child: Text("${region.name}의\n사진 더 보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                              ),
+                            );
+                          }
+
+                          // 이미지 클릭 시 크게 보기
                           final String originalUrl = photos[index]['galWebImageUrl'] ?? '';
-
-                          if (originalUrl.isEmpty) return const SizedBox.shrink();
-
                           final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
 
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              proxyUrl,
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+                          return InkWell(
+                            onTap: () => _showFullImage(proxyUrl),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(proxyUrl, width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
                             ),
                           );
                         },
@@ -284,6 +307,7 @@ class _IntroPageState extends State<IntroPage> {
                 ),
 
                 const SizedBox(height: 22),
+                // ... (하단 채팅방 입장 버튼 동일)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -292,21 +316,11 @@ class _IntroPageState extends State<IntroPage> {
                       Navigator.push(
                         pageContext,
                         MaterialPageRoute(
-                          settings: const RouteSettings(name: 'room'),
-                          builder: (context) => RoomPage(
-                            userId: widget.userId,
-                            roomTable: region.id,
-                            roomTitle: region.name,
-                          ),
+                          builder: (context) => RoomPage(userId: widget.userId, roomTable: region.id, roomTitle: region.name),
                         ),
                       );
                     },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                     child: const Text('채팅방 입장', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                   ),
                 ),

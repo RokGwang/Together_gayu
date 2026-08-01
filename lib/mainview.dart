@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:together_gayu/photo.dart';
 import 'room.dart';
 import 'tab_widget/widget.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -382,13 +383,13 @@ class _IntroPageState extends State<IntroPage> {
                               return InkWell(
                                 onTap: () {
                                   Navigator.pop(dialogContext);
-                                  Navigator.push(pageContext, MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)));
+                                  Navigator.push(pageContext, MaterialPageRoute(builder: (context) => PhotoPage(regionName: region.name)));
                                 },
                                 child: Container(
                                   width: 80, height: 80,
                                   decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
                                   alignment: Alignment.center,
-                                  child: Text("${region.name}\n더 둘러보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                                  child: Text("${region.name} 사진\n더 둘러보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                                 ),
                               );
                             }
@@ -417,6 +418,18 @@ class _IntroPageState extends State<IntroPage> {
                   ),
 
                   const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Navigator.push(pageContext, MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)));
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      child: const Text('관광지 소개', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   // 입장 버튼
                   SizedBox(
                     width: double.infinity,

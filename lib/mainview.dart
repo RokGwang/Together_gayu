@@ -4,7 +4,7 @@ import 'room.dart';
 import 'tab_widget/widget.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
-import 'photo.dart'; // 이 줄이 없으면 추가하세요.
+import 'information.dart'; // 이 줄이 없으면 추가하세요.
 
 // ===== 지역 정보 모델 =====
 class RegionInfo {
@@ -157,6 +157,23 @@ class _IntroPageState extends State<IntroPage> {
 
   ];
 
+  Future<String> fetchRegionText(String regionName) async {
+    try {
+      // PHP 파일 호출 (name 파라미터 전달)
+      final url = '${dotenv.env['PHP_URL']}popup.php?name=${Uri.encodeComponent(regionName)}';
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        // PHP에서 텍스트만 출력하므로 response.body를 그대로 사용
+        final text = response.body.trim();
+        return text.isNotEmpty ? text : '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요';
+      }
+    } catch (e) {
+      debugPrint('PHP 로드 오류: $e');
+    }
+    return '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요';
+  }
+
   void showRegionPopup(RegionInfo region) {
     final pageContext = context;
 
@@ -242,14 +259,19 @@ class _IntroPageState extends State<IntroPage> {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  '${region.name}의 여행지로 함께 이동할\n사람들을 찾아보세요',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
+                FutureBuilder<String>(
+                  future: fetchRegionText(region.name),
+                  builder: (context, snapshot) {
+                    return Text(
+                      snapshot.data ?? '${region.name}의 여행지로 함께 이동할\n사람들을 찾아보세요',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    );
+                  },
                 ),
 
                 // [기능 추가] 사진 영역 삽입
@@ -277,14 +299,14 @@ class _IntroPageState extends State<IntroPage> {
                                 Navigator.pop(dialogContext); // 팝업 닫기
                                 Navigator.push(
                                   pageContext,
-                                  MaterialPageRoute(builder: (context) => PhotoPage(regionName: region.name)),
+                                  MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)),
                                 );
                               },
                               child: Container(
                                 width: 80, height: 80,
                                 decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
                                 alignment: Alignment.center,
-                                child: Text("${region.name}\n관광지 사진\n더 보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                                child: Text("${region.name}\n둘러보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                               ),
                             );
                           }

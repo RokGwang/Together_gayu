@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart'; // import 필수
 import 'user/login.dart';
+import 'socket_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  SocketService.instance.connect();
 
   // .env 파일 로드
   await dotenv.load(fileName: ".env");

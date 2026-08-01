@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'mychat.dart';
 import '../tab_widget/tab_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../socket_service.dart';
 
 class ChatPage extends StatefulWidget {
 
@@ -52,7 +53,46 @@ class _ChatPageState extends State<ChatPage> {
 
     loadMessages(initial: true);
 
-    pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    // ⭐ 소켓 연결 후 이 방에 join
+    SocketService.instance.connect();
+    SocketService.instance.joinRoom(widget.roomId, widget.userId);
+
+    // ⭐ 실시간 새 메시지 수신
+    SocketService.instance.onNewMessage((data) {
+
+      if (!mounted) return;
+
+      final newMsg = Map<String, dynamic>.from(data);
+
+      // 이미 REST로 받아온 메시지와 중복되지 않도록 id 체크
+      final alreadyExists = messages.any((m) => m["id"].toString() == newMsg["id"].toString());
+
+      if (alreadyExists) return;
+
+      setState(() {
+        messages.add(newMsg);
+        lastMessageId = int.tryParse(newMsg["id"].toString()) ?? lastMessageId;
+      });
+
+      scrollToBottom();
+
+    });
+
+    // ⭐ 방장이 강제 퇴장/나가기/마감/정산 등 이벤트 발생 시 -> 가볍게 REST 재조회로 상태 갱신
+    for (final event in ["member_kicked", "member_left", "dead_toggled", "settlement_created"]) {
+
+      SocketService.instance.onRoomEvent(event, (_) {
+        loadMessages(initial: false);
+      });
+
+    }
+
+    SocketService.instance.onRoomEvent("room_deleted", (_) {
+      loadMessages(initial: false);
+    });
+
+    // ⭐ 안전망: 소켓이 끊겼을 경우를 대비한 저빈도 폴백 폴링 (30초)
+    pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       loadMessages(initial: false);
     });
 
@@ -65,6 +105,13 @@ class _ChatPageState extends State<ChatPage> {
     messageController.dispose();
     scrollController.dispose();
     amountController.dispose();
+
+    SocketService.instance.socket?.off('new_message');
+    SocketService.instance.socket?.off('member_kicked');
+    SocketService.instance.socket?.off('member_left');
+    SocketService.instance.socket?.off('dead_toggled');
+    SocketService.instance.socket?.off('settlement_created');
+    SocketService.instance.socket?.off('room_deleted');
 
     super.dispose();
   }
@@ -388,35 +435,47 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
 
-      final response = await http.post(
+      if (SocketService.instance.isConnected) {
 
-        Uri.parse("${dotenv.env['PHP_URL']}send_message.php"),
-
-        headers: {"Content-Type": "application/json"},
-
-        body: jsonEncode({
-          "room_id": widget.roomId,
-          "user_id": widget.userId,
-          "message": text,
-        }),
-
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (data["success"] == true) {
+        // ⭐ 소켓이 연결되어 있으면 실시간 전송
+        SocketService.instance.sendMessage(widget.roomId, widget.userId, text);
 
         messageController.clear();
 
-        await loadMessages(initial: false);
-
       } else {
 
-        if (!mounted) return;
+        // ⭐ 소켓 연결이 안 되어 있으면 기존 REST 방식으로 대체 (안전망)
+        final response = await http.post(
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data["message"] ?? "전송 실패")),
+          Uri.parse("http://34.22.87.81/together/send_message.php"),
+
+          headers: {"Content-Type": "application/json"},
+
+          body: jsonEncode({
+            "room_id": widget.roomId,
+            "user_id": widget.userId,
+            "message": text,
+          }),
+
         );
+
+        final data = jsonDecode(response.body);
+
+        if (data["success"] == true) {
+
+          messageController.clear();
+
+          await loadMessages(initial: false);
+
+        } else {
+
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(data["message"] ?? "전송 실패")),
+          );
+
+        }
 
       }
 

@@ -3,6 +3,7 @@ import 'dart:ui'; // [수정] 블러 처리를 위해 추가
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PhotoPage extends StatefulWidget {
   final String regionName;
@@ -80,10 +81,13 @@ class _PhotoPageState extends State<PhotoPage> {
                     // 이미지 영역
                     InteractiveViewer(
                       clipBehavior: Clip.none,
-                      child: Image.network(
-                        proxyUrl,
+                      child: CachedNetworkImage(
+                        imageUrl: proxyUrl,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                        errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white),
                       ),
                     ),
                     const SizedBox(height: 15),
@@ -216,13 +220,21 @@ class _PhotoPageState extends State<PhotoPage> {
                           final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
 
                           return InkWell(
-                            onTap: () => _showFullImage(pagePhotos[index]), // 전체 데이터 전달
+                            onTap: () => _showFullImage(pagePhotos[index]),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
+                              child: CachedNetworkImage(
+                                imageUrl: '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image)),
+                                memCacheWidth: 200, // 그리드 썸네일 메모리 최적화
+                                placeholder: (context, url) => Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.broken_image)
+                                ),
                               ),
                             ),
                           );

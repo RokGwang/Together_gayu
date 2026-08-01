@@ -5,6 +5,7 @@ import 'tab_widget/widget.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'information.dart'; // 이 줄이 없으면 추가하세요.
+import 'dart:ui';
 
 // ===== 지역 정보 모델 =====
 class RegionInfo {
@@ -42,6 +43,8 @@ class IntroPage extends StatefulWidget {
   @override
   State<IntroPage> createState() => _IntroPageState();
 }
+
+
 
 class _IntroPageState extends State<IntroPage> {
   Future<List<dynamic>> fetchPhotosByRegion(String regionName) async {
@@ -157,38 +160,113 @@ class _IntroPageState extends State<IntroPage> {
 
   ];
 
-  Future<String> fetchRegionText(String regionName) async {
+  Future<Map<String, String>> fetchRegionData(String regionName) async {
     try {
-      // PHP 파일 호출 (name 파라미터 전달)
-      final url = '${dotenv.env['PHP_URL']}popup.php?name=${Uri.encodeComponent(regionName)}';
+      // popup2.php 호출
+      final url = '${dotenv.env['PHP_URL']}popup2.php?name=${Uri.encodeComponent(regionName)}';
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        // PHP에서 텍스트만 출력하므로 response.body를 그대로 사용
-        final text = response.body.trim();
-        return text.isNotEmpty ? text : '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요';
+        final data = jsonDecode(response.body);
+        return {
+          'subtext': data['subtext'] ?? '',
+          'text': data['text'] ?? '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요'
+        };
       }
     } catch (e) {
       debugPrint('PHP 로드 오류: $e');
     }
-    return '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요';
+    return {
+      'subtext': '',
+      'text': '${regionName}의 여행지로 함께 이동할\n사람들을 찾아보세요'
+    };
+  }
+
+  void _showFullImage(Map<String, dynamic> photo) {
+    final String originalUrl = photo['galWebImageUrl'] ?? '';
+    final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
+            color: Colors.black.withOpacity(0.6),
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InteractiveViewer(
+                      clipBehavior: Clip.none,
+                      child: Image.network(
+                        proxyUrl,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      width: double.infinity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  photo['galTitle'] ?? '제목 없음',
+                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                onPressed: () { /* GPS 동작 */ },
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                              ),
+                              const SizedBox(height: 10),
+                              IconButton(
+                                icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                                onPressed: () { /* 검색 동작 */ },
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void showRegionPopup(RegionInfo region) {
     final pageContext = context;
-
-    void _showFullImage(String imageUrl) {
-      showDialog(
-        context: context,
-        builder: (context) => Dialog(
-          backgroundColor: Colors.transparent, // 투명 배경
-          child: GestureDetector(
-            onTap: () => Navigator.pop(context), // 탭하면 닫기
-            child: Image.network(imageUrl),
-          ),
-        ),
-      );
-    }
 
     showDialog(
       context: context,
@@ -201,152 +279,158 @@ class _IntroPageState extends State<IntroPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: primary.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.location_city_rounded, color: primary, size: 28),
-                ),
-                const SizedBox(height: 16),
-                Row( // 💡 Row로 감싸서 지역명과 집중률을 가로 배치
-                  children: [
-                    Text(
-                      region.name,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 닫기 버튼
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(width: 10),
-                    FutureBuilder<String>(
-                      future: fetchCrowdLevel(region.areaCd, region.signguCd),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+                    child: const Icon(Icons.location_city_rounded, color: primary, size: 28),
+                  ),
+                  const SizedBox(height: 16),
 
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
+                  // 💡 지역 데이터 FutureBuilder (Subtext + 지역명 + 본문)
+                  FutureBuilder<Map<String, String>>(
+                    future: fetchRegionData(region.name),
+                    builder: (context, snapshot) {
+                      final data = snapshot.data ?? {'subtext': '', 'text': '${region.name}의 여행지로 함께 이동할\n사람들을 찾아보세요'};
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. subtext (지역명 위)
+                          if (data['subtext']!.isNotEmpty) ...[
+                            Text(
+                              data['subtext']!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: primary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+
+                          // 2. 지역명 + 혼잡도
+                          Row(
+                            children: [
+                              Text(
+                                region.name,
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.black87),
+                              ),
+                              const SizedBox(width: 10),
+                              FutureBuilder<String>(
+                                future: fetchCrowdLevel(region.areaCd, region.signguCd),
+                                builder: (context, crowdSnapshot) {
+                                  final crowd = crowdSnapshot.data ?? "정보 없음";
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(color: primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                    child: Text("혼잡도 예상: $crowd", style: const TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.bold)),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
-                          child: Text(
-                            "혼잡도 ${snapshot.data!}",
-                            style: TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.bold),
+                          const SizedBox(height: 6),
+                          // 3. 본문 텍스트
+                          Text(
+                            data['text']!,
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500, height: 1.4),
                           ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  // 사진 영역
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 80,
+                    child: FutureBuilder<List<dynamic>>(
+                      future: fetchGalleryByRegion(region.name),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
+                        final photos = snapshot.data!;
+                        if (photos.isEmpty) return const Center(child: Text("사진 정보가 없습니다."));
+
+                        return ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: photos.length > 3 ? 4 : photos.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            if (index == 3) {
+                              return InkWell(
+                                onTap: () {
+                                  Navigator.pop(dialogContext);
+                                  Navigator.push(pageContext, MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)));
+                                },
+                                child: Container(
+                                  width: 80, height: 80,
+                                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                                  alignment: Alignment.center,
+                                  child: Text("${region.name}\n더 둘러보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                                ),
+                              );
+                            }
+                            // 썸네일 이미지 생성 부분
+                            final photo = photos[index]; // 1. 현재 인덱스의 데이터 가져오기
+                            final String originalUrl = photo['galWebImageUrl'] ?? '';
+                            final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+
+                            return InkWell(
+                              onTap: () => _showFullImage(photo), // 2. URL 대신 전체 데이터(photo) 전달
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                    proxyUrl,
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                FutureBuilder<String>(
-                  future: fetchRegionText(region.name),
-                  builder: (context, snapshot) {
-                    return Text(
-                      snapshot.data ?? '${region.name}의 여행지로 함께 이동할\n사람들을 찾아보세요',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                        fontWeight: FontWeight.w500,
-                        height: 1.4,
-                      ),
-                    );
-                  },
-                ),
-
-                // [기능 추가] 사진 영역 삽입
-                // [기능 수정] 사진 영역
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 80,
-                  child: FutureBuilder<List<dynamic>>(
-                    future: fetchGalleryByRegion(region.name),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
-                      final photos = snapshot.data!;
-                      if (photos.isEmpty) return const Center(child: Text("사진 정보가 없습니다."));
-
-                      return ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: photos.length > 3 ? 4 : photos.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, index) {
-                          // 4번째 버튼: 사진 더 보기
-                          if (index == 3) {
-                            return InkWell(
-                              onTap: () {
-                                // [기능 추가] PhotoPage로 이동 (PhotoPage 클래스가 있다고 가정)
-                                Navigator.pop(dialogContext); // 팝업 닫기
-                                Navigator.push(
-                                  pageContext,
-                                  MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)),
-                                );
-                              },
-                              child: Container(
-                                width: 80, height: 80,
-                                decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
-                                alignment: Alignment.center,
-                                child: Text("${region.name}\n둘러보기", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-                              ),
-                            );
-                          }
-
-                          // 이미지 클릭 시 크게 보기
-                          final String originalUrl = photos[index]['galWebImageUrl'] ?? '';
-                          final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
-
-                          return InkWell(
-                            onTap: () => _showFullImage(proxyUrl),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(proxyUrl, width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
-                            ),
-                          );
-                        },
-                      );
-                    },
                   ),
-                ),
 
-                const SizedBox(height: 22),
-                // ... (하단 채팅방 입장 버튼 동일)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      Navigator.push(
-                        pageContext,
-                        MaterialPageRoute(
-                          builder: (context) => RoomPage(userId: widget.userId, roomTable: region.id, roomTitle: region.name),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                    child: const Text('채팅방 입장', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 22),
+                  // 입장 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Navigator.push(pageContext, MaterialPageRoute(builder: (context) => RoomPage(userId: widget.userId, roomTable: region.id, roomTitle: region.name)));
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      child: const Text('채팅방 입장', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

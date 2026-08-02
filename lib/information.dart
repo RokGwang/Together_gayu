@@ -62,8 +62,6 @@ class _InformationPageState extends State<InformationPage> {
                     children: [
                       Text(data['subtext'], style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 10),
-                      Text(data[''], style: const TextStyle(fontSize: 16)),
-                      const SizedBox(height: 20),
                       Text(data['text'], style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
                       // 이미지 5개 출력

@@ -44,6 +44,8 @@ class _ChatPageState extends State<ChatPage> {
 
   bool kickedHandled = false; // ⭐ 강제 퇴장 중복 처리 방지
 
+  bool initialScrollReady = false;
+
   Timer? pollTimer;
 
   @override
@@ -192,8 +194,16 @@ class _ChatPageState extends State<ChatPage> {
 
         });
 
-        if (initial || newMessages.isNotEmpty) {
-          scrollToBottom();
+        if (initial) {
+
+          // ⭐ 최초 로드는 애니메이션 없이 즉시 맨 아래로
+          scrollToBottom(animated: false);
+
+        } else if (newMessages.isNotEmpty) {
+
+          // ⭐ 이후 실시간 새 메시지는 부드럽게 애니메이션
+          scrollToBottom(animated: true);
+
         }
 
       } else {
@@ -405,17 +415,34 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
-  void scrollToBottom() {
+  void scrollToBottom({bool animated = true}) {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
 
       if (!scrollController.hasClients) return;
 
-      scrollController.animateTo(
-        scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (animated) {
+
+        scrollController.animateTo(
+          scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+
+      } else {
+
+        // ⭐ 최초 진입 시 애니메이션 없이 즉시 맨 아래로 점프
+        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+
+        if (!initialScrollReady) {
+
+          setState(() {
+            initialScrollReady = true;
+          });
+
+        }
+
+      }
 
     });
 
@@ -1706,8 +1733,11 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               )
+                  : Opacity(
 
-                  : ListView.builder(
+              opacity: initialScrollReady ? 1 : 0, // ⭐ 점프 전에는 투명 처리
+
+              child: ListView.builder(
 
                 controller: scrollController,
 
@@ -2170,6 +2200,7 @@ class _ChatPageState extends State<ChatPage> {
 
                 },
 
+              ),
               ),
 
             ),

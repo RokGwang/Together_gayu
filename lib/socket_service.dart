@@ -1,4 +1,5 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class SocketService {
 
@@ -10,12 +11,14 @@ class SocketService {
 
   bool get isConnected => socket?.connected ?? false;
 
+  final String baseUrl = dotenv.env['URL']!;
+
   void connect() {
 
     if (socket != null && socket!.connected) return;
 
     socket = IO.io(
-      'http://34.22.87.81:3001',
+      '$baseUrl:3001',
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()

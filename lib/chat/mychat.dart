@@ -88,7 +88,7 @@ class _MyChatPageState extends State<MyChatPage> {
     try {
       final response = await http.get(
         Uri.parse(
-          "${dotenv.env['PHP_URL']}mychat.php?user_id=${widget.userId}",
+          "${dotenv.env['PHP_URL']}mychat2.php?user_id=${widget.userId}",
         ),
       );
 
@@ -601,6 +601,10 @@ class _RoomCard extends StatelessWidget {
         ? room["unread_count"]
         : int.tryParse(room["unread_count"].toString()) ?? 0;
 
+    final String? lastMessage = room["last_message"] as String?;
+
+    final bool isLastMessageSystem = room["last_message_user_id"] == null;
+
     final int currentPeople = (room["current_people"] ?? 0) is int
         ? room["current_people"]
         : int.tryParse(room["current_people"].toString()) ?? 0;
@@ -733,7 +737,24 @@ class _RoomCard extends StatelessWidget {
                       ],
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
+                    if (lastMessage != null && lastMessage.isNotEmpty)
+
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          isLastMessageSystem ? "· $lastMessage" : lastMessage,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isLastMessageSystem ? Colors.grey.shade400 : Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                            fontStyle: isLastMessageSystem ? FontStyle.italic : FontStyle.normal,
+                          ),
+                        ),
+                      ),
+
 
                     // 하단: 시간 + 인원 뱃지
                     Row(

@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:together_gayu/photo.dart';
+import 'package:together_gayu/spot/photo.dart';
 import 'room.dart';
 import 'tab_widget/widget.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
-import 'information.dart'; // 이 줄이 없으면 추가하세요.
+import 'spot/information.dart'; // 이 줄이 없으면 추가하세요.
 import 'dart:ui';
 
 // ===== 지역 정보 모델 =====
@@ -19,16 +19,11 @@ class RegionInfo {
 
   final double topRatio;   // 지도 위 세로 위치 비율 (0~1)
 
-  final String areaCd;   // 추가
-  final String signguCd; // 추가
-
   const RegionInfo({
     required this.id,
     required this.name,
     required this.leftRatio,
     required this.topRatio,
-    required this.areaCd,
-    required this.signguCd,
   });
 
 }
@@ -108,56 +103,27 @@ class _IntroPageState extends State<IntroPage> {
     }
     return [];
   }
-  Future<String> fetchCrowdLevel(String areaCd, String signguCd) async {
-    try {
-      final url = '${dotenv.env['PHP_URL']}api_people.php?areaCd=$areaCd&signguCd=$signguCd&numOfRows=1';
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        // 데이터가 없는 경우 방어 코드
-        if (data['response'] == null || data['response']['body'] == null || data['response']['body']['items'] == null) {
-          return "정보 없음";
-        }
-
-        final itemsContainer = data['response']['body']['items'];
-        if (itemsContainer == "" || itemsContainer is String) return "정보 없음";
-
-        final items = itemsContainer['item'];
-        // 리스트가 배열(List) 형태일 때만 첫 번째 항목 가져오기
-        final item = (items is List) ? items[0] : items;
-
-        // 💡 여기서 키 값을 'cnctrRate'로 수정했습니다.
-        final rate = item['cnctrRate'] ?? "정보 없음";
-        return "$rate%"; // 뒤에 % 기호 붙이기
-      }
-    } catch (e) {
-      debugPrint('집중률 통신 오류: $e');
-    }
-    return "정보 없음";
-  }
 
   static const Color primary = Color(0xFFFF7A00);
 
   // ===== 지역 목록 (일단 균등 배치, 위치는 나중에 조정) =====
   static const List<RegionInfo> regions = [
 
-    RegionInfo(id: "cheonan",    name: "천안", leftRatio: 0.76, topRatio: 0.22, areaCd: "44", signguCd: "44133"),
-    RegionInfo(id: "asan",       name: "아산", leftRatio: 0.60, topRatio: 0.24, areaCd: "44", signguCd: "44200"),
-    RegionInfo(id: "dangjin",    name: "당진", leftRatio: 0.40, topRatio: 0.20, areaCd: "44", signguCd: "44270"),
-    RegionInfo(id: "seosan",     name: "서산", leftRatio: 0.28, topRatio: 0.26, areaCd: "44", signguCd: "44210"),
-    RegionInfo(id: "taean",      name: "태안", leftRatio: 0.16, topRatio: 0.30, areaCd: "44", signguCd: "44825"),
-    RegionInfo(id: "yesan",      name: "예산", leftRatio: 0.50, topRatio: 0.34, areaCd: "44", signguCd: "44810"),
-    RegionInfo(id: "hongseong",  name: "홍성", leftRatio: 0.38, topRatio: 0.44, areaCd: "44", signguCd: "44800"),
-    RegionInfo(id: "cheongyang", name: "청양", leftRatio: 0.50, topRatio: 0.52, areaCd: "44", signguCd: "44790"),
-    RegionInfo(id: "gongju",     name: "공주", leftRatio: 0.66, topRatio: 0.48, areaCd: "44", signguCd: "44150"),
-    RegionInfo(id: "boryeong",   name: "보령", leftRatio: 0.36, topRatio: 0.60, areaCd: "44", signguCd: "44180"),
-    RegionInfo(id: "buyeo",      name: "부여", leftRatio: 0.54, topRatio: 0.68, areaCd: "44", signguCd: "44760"),
-    RegionInfo(id: "seocheon",   name: "서천", leftRatio: 0.44, topRatio: 0.80, areaCd: "44", signguCd: "44770"),
-    RegionInfo(id: "nonsan",     name: "논산", leftRatio: 0.70, topRatio: 0.72, areaCd: "44", signguCd: "44230"),
-    RegionInfo(id: "gyeryong",   name: "계룡", leftRatio: 0.78, topRatio: 0.66, areaCd: "44", signguCd: "44250"),
-    RegionInfo(id: "geumsan",    name: "금산", leftRatio: 0.92, topRatio: 0.80, areaCd: "44", signguCd: "44710"),
+    RegionInfo(id: "cheonan",    name: "천안", leftRatio: 0.76, topRatio: 0.22),
+    RegionInfo(id: "asan",       name: "아산", leftRatio: 0.60, topRatio: 0.24),
+    RegionInfo(id: "dangjin",    name: "당진", leftRatio: 0.40, topRatio: 0.20),
+    RegionInfo(id: "seosan",     name: "서산", leftRatio: 0.28, topRatio: 0.26),
+    RegionInfo(id: "taean",      name: "태안", leftRatio: 0.16, topRatio: 0.30),
+    RegionInfo(id: "yesan",      name: "예산", leftRatio: 0.50, topRatio: 0.34),
+    RegionInfo(id: "hongseong",  name: "홍성", leftRatio: 0.38, topRatio: 0.44),
+    RegionInfo(id: "cheongyang", name: "청양", leftRatio: 0.50, topRatio: 0.52),
+    RegionInfo(id: "gongju",     name: "공주", leftRatio: 0.66, topRatio: 0.48),
+    RegionInfo(id: "boryeong",   name: "보령", leftRatio: 0.36, topRatio: 0.60),
+    RegionInfo(id: "buyeo",      name: "부여", leftRatio: 0.54, topRatio: 0.68),
+    RegionInfo(id: "seocheon",   name: "서천", leftRatio: 0.44, topRatio: 0.80),
+    RegionInfo(id: "nonsan",     name: "논산", leftRatio: 0.70, topRatio: 0.72),
+    RegionInfo(id: "gyeryong",   name: "계룡", leftRatio: 0.78, topRatio: 0.66),
+    RegionInfo(id: "geumsan",    name: "금산", leftRatio: 0.92, topRatio: 0.80),
 
   ];
 
@@ -339,17 +305,6 @@ class _IntroPageState extends State<IntroPage> {
                                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.black87),
                               ),
                               const SizedBox(width: 10),
-                              FutureBuilder<String>(
-                                future: fetchCrowdLevel(region.areaCd, region.signguCd),
-                                builder: (context, crowdSnapshot) {
-                                  final crowd = crowdSnapshot.data ?? "정보 없음";
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: primary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                    child: Text("혼잡도 예상: $crowd", style: const TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.bold)),
-                                  );
-                                },
-                              ),
                             ],
                           ),
                           const SizedBox(height: 6),

@@ -601,9 +601,32 @@ class _RoomCard extends StatelessWidget {
         ? room["unread_count"]
         : int.tryParse(room["unread_count"].toString()) ?? 0;
 
-    final String? lastMessage = room["last_message"] as String?;
+    final String? rawLastMessage = room["last_message"] as String?;
+
+    final String lastMessageType = (room["last_message_type"] ?? "text").toString();
 
     final bool isLastMessageSystem = room["last_message_user_id"] == null;
+
+// ⭐ 정산 메시지(SETTLEMENT|금액|인원|1인당)는 자연스러운 문구로 변환
+    final String? lastMessage;
+
+    if (rawLastMessage != null && rawLastMessage.startsWith("SETTLEMENT|")) {
+
+      lastMessage = "정산 요청이 도착";
+
+    } else if (lastMessageType == "image") {
+
+      lastMessage = "사진을 보냈습니다";
+
+    } else if (lastMessageType == "location") {
+
+      lastMessage = "위치를 공유했습니다";
+
+    } else {
+
+      lastMessage = rawLastMessage;
+
+    }
 
     final int currentPeople = (room["current_people"] ?? 0) is int
         ? room["current_people"]
@@ -681,7 +704,7 @@ class _RoomCard extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.black87,
                               ),
@@ -692,7 +715,7 @@ class _RoomCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 6),
                             child: Icon(
                               Icons.arrow_forward_rounded,
-                              size: 14,
+                              size: 12,
                               color: Colors.grey.shade400,
                             ),
                           ),
@@ -705,7 +728,7 @@ class _RoomCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w800,
                               color: accentColor,
                             ),
@@ -725,7 +748,7 @@ class _RoomCard extends StatelessWidget {
                             child: const Text(
                               "빠른매칭",
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.blueAccent,
                               ),
@@ -774,12 +797,17 @@ class _RoomCard extends StatelessWidget {
 
                               final bool hasTime = room["time"] != null && room["time"].toString().isNotEmpty;
 
+                              // ⭐ 빠른매칭 방은 시간이 없어도 "시간 조율" 문구를 표시하지 않음
+                              if (!hasTime && isQuickMatch) {
+                                return const SizedBox.shrink();
+                              }
+
                               return Text(
                                 hasTime ? formatTimeNoSeconds(room["time"].toString()) : "시간 조율",
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11, // ⭐ 12 -> 11로 축소
                                   color: hasTime ? Colors.green.shade600 : Colors.grey.shade500,
                                   fontWeight: hasTime ? FontWeight.w700 : FontWeight.w500,
                                 ),
@@ -802,7 +830,7 @@ class _RoomCard extends StatelessWidget {
                             children: [
                               const Icon(
                                 Icons.person_rounded,
-                                size: 12,
+                                size: 10,
                                 color: Colors.black45,
                               ),
                               const SizedBox(width: 2),
@@ -810,7 +838,7 @@ class _RoomCard extends StatelessWidget {
                                 "$currentPeople/$maxPeople",
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 11,
+                                  fontSize: 9,
                                   color: Colors.black54,
                                 ),
                               ),

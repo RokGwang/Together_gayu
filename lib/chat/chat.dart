@@ -6,6 +6,10 @@ import 'mychat.dart';
 import '../tab_widget/tab_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../socket_service.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'location_picker.dart';
+import '../spot/map_view.dart';
 
 class ChatPage extends StatefulWidget {
 
@@ -20,6 +24,57 @@ class ChatPage extends StatefulWidget {
 
   @override
   State<ChatPage> createState() => _ChatPageState();
+}
+
+class _AttachTile extends StatelessWidget {
+
+  final IconData icon;
+
+  final String label;
+
+  final Color color;
+
+  final VoidCallback onTap;
+
+  const _AttachTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    return InkWell(
+
+      onTap: onTap,
+
+      borderRadius: BorderRadius.circular(16),
+
+      child: Container(
+
+        padding: const EdgeInsets.symmetric(vertical: 20),
+
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7F9),
+          borderRadius: BorderRadius.circular(16),
+        ),
+
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 13)),
+          ],
+        ),
+
+      ),
+
+    );
+
+  }
+
 }
 
 class _ChatPageState extends State<ChatPage> {
@@ -44,7 +99,7 @@ class _ChatPageState extends State<ChatPage> {
 
   bool kickedHandled = false; // ⭐ 강제 퇴장 중복 처리 방지
 
-  bool initialScrollReady = false;
+  bool isAttaching = false; // ⭐ 사진/위치 전송 중 로딩
 
   Timer? pollTimer;
 
@@ -194,15 +249,9 @@ class _ChatPageState extends State<ChatPage> {
 
         });
 
-        if (initial) {
+        if (!initial && newMessages.isNotEmpty) {
 
-          // ⭐ 최초 로드는 애니메이션 없이 즉시 맨 아래로
-          scrollToBottom(animated: false);
-
-        } else if (newMessages.isNotEmpty) {
-
-          // ⭐ 이후 실시간 새 메시지는 부드럽게 애니메이션
-          scrollToBottom(animated: true);
+          scrollToBottom();
 
         }
 
@@ -415,34 +464,17 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
-  void scrollToBottom({bool animated = true}) {
+  void scrollToBottom() {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
 
       if (!scrollController.hasClients) return;
 
-      if (animated) {
-
-        scrollController.animateTo(
-          scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-
-      } else {
-
-        // ⭐ 최초 진입 시 애니메이션 없이 즉시 맨 아래로 점프
-        scrollController.jumpTo(scrollController.position.maxScrollExtent);
-
-        if (!initialScrollReady) {
-
-          setState(() {
-            initialScrollReady = true;
-          });
-
-        }
-
-      }
+      scrollController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
 
     });
 
@@ -474,7 +506,7 @@ class _ChatPageState extends State<ChatPage> {
         // ⭐ 소켓 연결이 안 되어 있으면 기존 REST 방식으로 대체 (안전망)
         final response = await http.post(
 
-          Uri.parse("http://34.22.87.81/together/send_message.php"),
+          Uri.parse("${dotenv.env['PHP_URL']}send_message.php"),
 
           headers: {"Content-Type": "application/json"},
 
@@ -521,6 +553,191 @@ class _ChatPageState extends State<ChatPage> {
       setState(() {
         isSending = false;
       });
+
+    }
+
+  }
+
+  Future<void> showAttachmentSheet() async {
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: false,
+      builder: (_) => Container(
+
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+
+            Row(
+              children: [
+
+                Expanded(
+                  child: _AttachTile(
+                    icon: Icons.photo_rounded,
+                    label: "사진",
+                    color: primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      pickAndSendImage();
+                    },
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: _AttachTile(
+                    icon: Icons.location_on_rounded,
+                    label: "지도",
+                    color: primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      pickAndSendLocation();
+                    },
+                  ),
+                ),
+
+              ],
+            ),
+
+          ],
+        ),
+
+      ),
+
+    );
+
+  }
+
+  Future<void> pickAndSendImage() async {
+
+    final picker = ImagePicker();
+
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (picked == null) return;
+
+    setState(() => isAttaching = true);
+
+    try {
+
+      final uri = Uri.parse("${dotenv.env['PHP_URL']}upload_chat_image.php");
+
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['room_id'] = widget.roomId.toString()
+        ..fields['user_id'] = widget.userId.toString()
+        ..files.add(await http.MultipartFile.fromPath('image', picked.path));
+
+      final streamedResponse = await request.send();
+
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] != true) {
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "이미지 전송 실패")),
+        );
+
+      }
+
+      // 실시간 소켓으로 이미 반영되지만, 혹시 몰라 안전하게 한 번 더 동기화
+      await loadMessages(initial: false);
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 : $e")),
+      );
+
+    } finally {
+
+      if (!mounted) return;
+
+      setState(() => isAttaching = false);
+
+    }
+
+  }
+
+  Future<void> pickAndSendLocation() async {
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LocationPickerPage()),
+    );
+
+    if (result == null) return;
+
+    setState(() => isAttaching = true);
+
+    try {
+
+      final response = await http.post(
+        Uri.parse("${dotenv.env['PHP_URL']}send_location.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "room_id": widget.roomId,
+          "user_id": widget.userId,
+          "lat": result["lat"],
+          "lng": result["lng"],
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] != true) {
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "위치 전송 실패")),
+        );
+
+      }
+
+      await loadMessages(initial: false);
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 : $e")),
+      );
+
+    } finally {
+
+      if (!mounted) return;
+
+      setState(() => isAttaching = false);
 
     }
 
@@ -719,7 +936,7 @@ class _ChatPageState extends State<ChatPage> {
 
       final data = jsonDecode(response.body);
 
-      if (data["success"] == true) {
+      /*if (data["success"] == true) {
 
         await loadMessages(initial: false);
 
@@ -731,7 +948,7 @@ class _ChatPageState extends State<ChatPage> {
           const SnackBar(content: Text("정산 요청에 실패했습니다")),
         );
 
-      }
+      }*/
 
     } catch (e) {
 
@@ -1563,6 +1780,113 @@ class _ChatPageState extends State<ChatPage> {
     return isSystemMessage(msg) &&
         (msg["message"] ?? "").toString().startsWith("SETTLEMENT|");
   }
+  bool isImageMessage(dynamic msg) {
+    return (msg["message_type"] ?? "text") == "image";
+  }
+
+  bool isLocationMessage(dynamic msg) {
+    return (msg["message_type"] ?? "text") == "location";
+  }
+
+  Widget buildMessageBubbleContent(dynamic msg, bool isMine) {
+
+    if (isImageMessage(msg)) {
+
+      final String imageUrl = "${dotenv.env['PHP_URL']}${msg["message"]}";
+
+      return GestureDetector(
+        onTap: () {
+
+          showDialog(
+            context: context,
+            useRootNavigator: false,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              child: InteractiveViewer(
+                child: Image.network(imageUrl),
+              ),
+            ),
+          );
+
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            imageUrl,
+            width: 180,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              width: 180,
+              height: 180,
+              color: Colors.grey.shade200,
+              child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+            ),
+          ),
+        ),
+      );
+
+    }
+
+    if (isLocationMessage(msg)) {
+
+      final parts = (msg["message"] ?? "").toString().split(",");
+
+      final lat = double.tryParse(parts.isNotEmpty ? parts[0] : "") ?? 0;
+      final lng = double.tryParse(parts.length > 1 ? parts[1] : "") ?? 0;
+
+      return GestureDetector(
+        onTap: () {
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MapViewPage(
+                lat: lat,
+                lng: lng,
+                title: "공유된 위치",
+              ),
+            ),
+          );
+
+        },
+        child: Container(
+          width: 180,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMine ? Colors.white.withOpacity(0.15) : const Color(0xFFF7F7F9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.location_on_rounded, color: isMine ? Colors.white : primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "위치 공유됨",
+                  style: TextStyle(
+                    color: isMine ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+    }
+
+    return Text(
+      msg["message"] ?? "",
+      style: TextStyle(
+        color: isMine ? Colors.white : Colors.black87,
+        fontSize: 14,
+        height: 1.3,
+      ),
+    );
+
+  }
 
   String formatCurrency(int value) {
 
@@ -1733,475 +2057,467 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               )
-                  : Opacity(
+                : ListView.builder(
 
-              opacity: initialScrollReady ? 1 : 0, // ⭐ 점프 전에는 투명 처리
+                  controller: scrollController,
 
-              child: ListView.builder(
+                  reverse: true, // ⭐ 핵심: 리스트를 거꾸로 그려서 시작점(offset 0)이 항상 최신 메시지
 
-                controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(15, 15, 15, 15),
 
-                padding: const EdgeInsets.fromLTRB(15, 15, 15, 15),
+                  itemCount: messages.length,
 
-                itemCount: messages.length,
+                  itemBuilder: (context, index) {
 
-                itemBuilder: (context, index) {
+                    final int reversedIndex = messages.length - 1 - index; // ⭐ 추가
 
-                  final msg = messages[index];
+                    final msg = messages[reversedIndex]; // ⭐ index -> reversedIndex
 
-                  final bool isSystem = isSystemMessage(msg);
+                    final bool isSystem = isSystemMessage(msg);
 
-                  final bool isSettlement = isSettlementMessage(msg);
+                    final bool isSettlement = isSettlementMessage(msg);
 
-                  final prevMsg = index > 0 ? messages[index - 1] : null;
+                    final prevMsg = reversedIndex > 0 ? messages[reversedIndex - 1] : null; // ⭐ index -> reversedIndex
 
-                  final showDateSeparator = prevMsg == null ||
-                      !isSameDate(prevMsg["created_at"], msg["created_at"]);
+                    final showDateSeparator = prevMsg == null ||
+                        !isSameDate(prevMsg["created_at"], msg["created_at"]);
 
-                  // ===== 정산 메시지 (전용 카드) =====
-                  if (isSettlement) {
+                    // ===== 정산 메시지 (전용 카드) =====
+                    if (isSettlement) {
 
-                    final parts = (msg["message"] as String).split("|");
+                      final parts = (msg["message"] as String).split("|");
 
-                    final amount = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
-                    final people = int.tryParse(parts.length > 2 ? parts[2] : "1") ?? 1;
-                    final perPerson = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
+                      final amount = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
+                      final people = int.tryParse(parts.length > 2 ? parts[2] : "1") ?? 1;
+                      final perPerson = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
 
-                    return Column(
-                      children: [
+                      return Column(
+                        children: [
 
-                        if (showDateSeparator)
+                          if (showDateSeparator)
 
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  formatDateSeparator(msg["created_at"]),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w600,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    formatDateSeparator(msg["created_at"]),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
 
-                        Padding(
+                          Padding(
 
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
 
-                          child: Container(
+                            child: Container(
 
-                            width: double.infinity,
+                              width: double.infinity,
 
-                            padding: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.all(16),
 
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: primary.withOpacity(0.25)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-
-                                Row(
-                                  children: [
-
-                                    Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: primary.withOpacity(0.12),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.calculate_rounded,
-                                        size: 16,
-                                        color: primary,
-                                      ),
-                                    ),
-
-                                    const SizedBox(width: 8),
-
-                                    const Text(
-                                      "정산 요청",
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-
-                                  ],
-                                ),
-
-                                const SizedBox(height: 12),
-
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "총 금액",
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                                    ),
-                                    Text(
-                                      "${formatCurrency(amount)}원",
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 4),
-
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "인원",
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                                    ),
-                                    Text(
-                                      "$people명",
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: primary.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: primary.withOpacity(0.25)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
                                   ),
-                                  child: Column(
+                                ],
+                              ),
+
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+
+                                  Row(
                                     children: [
-                                      Text(
-                                        "1인당",
-                                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        "${formatCurrency(perPerson)}원",
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w800,
+
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: primary.withOpacity(0.12),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.calculate_rounded,
+                                          size: 16,
                                           color: primary,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
 
-                                const SizedBox(height: 12),
+                                      const SizedBox(width: 8),
 
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      // 아직 기능 없음 (추후 구현 예정)
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: primary,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                                    label: const Text(
-                                      "송금하기",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                              ],
-                            ),
-
-                          ),
-
-                        ),
-
-                      ],
-                    );
-
-                  }
-
-                  // ===== 일반 시스템 메시지 (입장/퇴장/강퇴 알림) =====
-                  if (isSystem) {
-
-                    return Column(
-                      children: [
-
-                        if (showDateSeparator)
-
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  formatDateSeparator(msg["created_at"]),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                msg["message"] ?? "",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      ],
-                    );
-
-                  }
-
-                  final isMine =
-                      msg["user_id"].toString() == widget.userId.toString();
-
-                  final isSameSenderAsPrev = prevMsg != null &&
-                      !showDateSeparator &&
-                      !isSystemMessage(prevMsg) &&
-                      prevMsg["user_id"].toString() == msg["user_id"].toString();
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-
-                      if (showDateSeparator)
-
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                formatDateSeparator(msg["created_at"]),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      Padding(
-                        padding: EdgeInsets.only(top: isSameSenderAsPrev ? 3 : 12),
-                        child: Row(
-
-                          mainAxisAlignment: isMine
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-
-                          crossAxisAlignment: CrossAxisAlignment.end,
-
-                          children: [
-
-                            if (!isMine) ...[
-
-                              isSameSenderAsPrev
-                                  ? const SizedBox(width: 32)
-                                  : CircleAvatar(
-                                radius: 16,
-                                backgroundColor: primary.withOpacity(0.15),
-                                child: Text(
-                                  (msg["name"] ?? "?").toString().isNotEmpty
-                                      ? msg["name"].toString().substring(0, 1)
-                                      : "?",
-                                  style: TextStyle(
-                                    color: primary,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 8),
-
-                            ],
-
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: isMine
-                                    ? CrossAxisAlignment.end
-                                    : CrossAxisAlignment.start,
-                                children: [
-
-                                  if (!isMine && !isSameSenderAsPrev)
-
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 3, left: 2),
-                                      child: Text(
-                                        msg["name"] ?? "",
+                                      const Text(
+                                        "정산 요청",
                                         style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey.shade600,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black87,
                                         ),
                                       ),
-                                    ),
+
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 12),
 
                                   Row(
-
-                                    mainAxisSize: MainAxisSize.min,
-
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-
-                                      if (isMine) ...[
-
-                                        Text(
-                                          formatTime(msg["created_at"]),
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade400,
-                                          ),
-                                        ),
-
-                                        const SizedBox(width: 6),
-
-                                      ],
-
-                                      Flexible(
-                                        child: Container(
-
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 10,
-                                          ),
-
-                                          constraints: const BoxConstraints(maxWidth: 240),
-
-                                          decoration: BoxDecoration(
-                                            color: isMine ? primary : Colors.white,
-                                            borderRadius: BorderRadius.only(
-                                              topLeft: const Radius.circular(16),
-                                              topRight: const Radius.circular(16),
-                                              bottomLeft: Radius.circular(isMine ? 16 : 4),
-                                              bottomRight: Radius.circular(isMine ? 4 : 16),
-                                            ),
-                                            boxShadow: isMine
-                                                ? []
-                                                : [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.04),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-
-                                          child: Text(
-                                            msg["message"] ?? "",
-                                            style: TextStyle(
-                                              color: isMine ? Colors.white : Colors.black87,
-                                              fontSize: 14,
-                                              height: 1.3,
-                                            ),
-                                          ),
-
+                                      Text(
+                                        "총 금액",
+                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                      ),
+                                      Text(
+                                        "${formatCurrency(amount)}원",
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black87,
                                         ),
                                       ),
+                                    ],
+                                  ),
 
-                                      if (!isMine) ...[
+                                  const SizedBox(height: 4),
 
-                                        const SizedBox(width: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        "인원",
+                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                      ),
+                                      Text(
+                                        "$people명",
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
 
+                                  const SizedBox(height: 10),
+
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: primary.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Column(
+                                      children: [
                                         Text(
-                                          formatTime(msg["created_at"]),
+                                          "1인당",
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          "${formatCurrency(perPerson)}원",
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.grey.shade400,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800,
+                                            color: primary,
                                           ),
                                         ),
-
                                       ],
+                                    ),
+                                  ),
 
-                                    ],
+                                  const SizedBox(height: 12),
 
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        // 아직 기능 없음 (추후 구현 예정)
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: primary,
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
+                                      label: const Text(
+                                        "송금하기",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
                                   ),
 
                                 ],
                               ),
+
                             ),
 
-                          ],
+                          ),
 
+                        ],
+                      );
+
+                    }
+
+                    // ===== 일반 시스템 메시지 (입장/퇴장/강퇴 알림) =====
+                    if (isSystem) {
+
+                      return Column(
+                        children: [
+
+                          if (showDateSeparator)
+
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    formatDateSeparator(msg["created_at"]),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  msg["message"] ?? "",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        ],
+                      );
+
+                    }
+
+                    final isMine =
+                        msg["user_id"].toString() == widget.userId.toString();
+
+                    final isSameSenderAsPrev = prevMsg != null &&
+                        !showDateSeparator &&
+                        !isSystemMessage(prevMsg) &&
+                        prevMsg["user_id"].toString() == msg["user_id"].toString();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+
+                        if (showDateSeparator)
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatDateSeparator(msg["created_at"]),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        Padding(
+                          padding: EdgeInsets.only(top: isSameSenderAsPrev ? 3 : 12),
+                          child: Row(
+
+                            mainAxisAlignment: isMine
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+
+                            crossAxisAlignment: CrossAxisAlignment.end,
+
+                            children: [
+
+                              if (!isMine) ...[
+
+                                isSameSenderAsPrev
+                                    ? const SizedBox(width: 32)
+                                    : CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: primary.withOpacity(0.15),
+                                  child: Text(
+                                    (msg["name"] ?? "?").toString().isNotEmpty
+                                        ? msg["name"].toString().substring(0, 1)
+                                        : "?",
+                                    style: TextStyle(
+                                      color: primary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 8),
+
+                              ],
+
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: isMine
+                                      ? CrossAxisAlignment.end
+                                      : CrossAxisAlignment.start,
+                                  children: [
+
+                                    if (!isMine && !isSameSenderAsPrev)
+
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 3, left: 2),
+                                        child: Text(
+                                          msg["name"] ?? "",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ),
+
+                                    Row(
+
+                                      mainAxisSize: MainAxisSize.min,
+
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+
+                                      children: [
+
+                                        if (isMine) ...[
+
+                                          Text(
+                                            formatTime(msg["created_at"]),
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade400,
+                                            ),
+                                          ),
+
+                                          const SizedBox(width: 6),
+
+                                        ],
+
+                                        Flexible(
+                                          child: Container(
+
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+
+                                            constraints: const BoxConstraints(maxWidth: 240),
+
+                                            decoration: BoxDecoration(
+                                              color: isMine ? primary : Colors.white,
+                                              borderRadius: BorderRadius.only(
+                                                topLeft: const Radius.circular(16),
+                                                topRight: const Radius.circular(16),
+                                                bottomLeft: Radius.circular(isMine ? 16 : 4),
+                                                bottomRight: Radius.circular(isMine ? 4 : 16),
+                                              ),
+                                              boxShadow: isMine
+                                                  ? []
+                                                  : [
+                                                BoxShadow(
+                                                  color: Colors.black.withOpacity(0.04),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+
+                                            child: buildMessageBubbleContent(msg, isMine),
+
+                                          ),
+                                        ),
+
+                                        if (!isMine) ...[
+
+                                          const SizedBox(width: 6),
+
+                                          Text(
+                                            formatTime(msg["created_at"]),
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey.shade400,
+                                            ),
+                                          ),
+
+                                        ],
+
+                                      ],
+
+                                    ),
+
+                                  ],
+                                ),
+                              ),
+
+                            ],
+
+                          ),
                         ),
-                      ),
 
-                    ],
-                  );
+                      ],
+                    );
 
-                },
+                  },
 
-              ),
-              ),
+                ),
 
             ),
 
@@ -2229,6 +2545,27 @@ class _ChatPageState extends State<ChatPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
 
                   children: [
+                    GestureDetector(
+
+                      onTap: isAttaching ? null : showAttachmentSheet,
+
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F7F9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: isAttaching
+                            ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                        )
+                            : const Icon(Icons.add_rounded, color: primary),
+                      ),
+
+                    ),
 
                     Expanded(
 

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'final2.dart';
 import 'gps.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../up.dart';
 
 class End2Page extends StatefulWidget {
   final int userId;
@@ -31,8 +32,24 @@ class _End2PageState extends State<End2Page> {
 
   @override
   void initState() {
+
     super.initState();
+
     loadPlaces();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+      OnboardingPopup.showOnce(
+        context: context,
+        userId: widget.userId,
+        popupKey: "end2",
+        title: "식사 채팅방을 만들어요",
+        message: "함께 식사할 장소를 선택하면\n같이 식비를 나눌 사람들을 모을 수 있어요",
+        icon: Icons.restaurant_rounded,
+      );
+
+    });
+
   }
 
   Future<void> loadPlaces() async {

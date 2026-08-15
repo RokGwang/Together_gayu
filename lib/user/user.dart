@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../tab_widget/widget.dart';
 import 'withdraw.dart';
+import 'user_update.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../main.dart';
+import 'login.dart';
+import '../tab_widget/tab_controller.dart';
 
 class UserPage extends StatefulWidget {
 
@@ -38,6 +42,10 @@ class _UserPageState extends State<UserPage> {
   }
 
   Future<void> loadUser() async {
+
+    setState(() {
+      loading = true;
+    });
 
     try {
 
@@ -81,6 +89,136 @@ class _UserPageState extends State<UserPage> {
       });
 
     }
+
+  }
+
+  Future<void> goToUpdatePage() async {
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserUpdatePage(userId: widget.userId),
+      ),
+    );
+
+    // ⭐ user_update.dart에서 저장 성공(true) 신호를 받으면 새로고침
+    if (result == true) {
+
+      loadUser();
+
+    }
+
+  }
+
+  Future<void> showLogoutDialog() async {
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.logout_rounded,
+                  color: primary,
+                  size: 28,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              const Text(
+                "로그아웃 하시겠습니까?",
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              Row(
+                children: [
+
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text(
+                        "취소",
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text(
+                        "로그아웃",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                ],
+              ),
+
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    AppTabController.reset(); // ⭐ 탭 상태 초기화
+
+    if (!mounted) return;
+
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil( // ⭐ rootNavigator: true 추가
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+    );
 
   }
 
@@ -180,12 +318,47 @@ class _UserPageState extends State<UserPage> {
                       ),
                     ),
 
+                    const SizedBox(height: 20),
+
+                    // ⭐ 회원정보 수정 버튼
+                    TextButton.icon(
+                      onPressed: goToUpdatePage,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        backgroundColor: primary.withOpacity(0.08),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      icon: Icon(Icons.edit_rounded, size: 16, color: primary),
+                      label: Text(
+                        '회원정보 수정',
+                        style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+
                   ],
                 ),
 
               ),
 
               const Spacer(),
+
+              // ⭐ 로그아웃 버튼
+              Center(
+                child: TextButton(
+                  onPressed: showLogoutDialog,
+                  child: Text(
+                    '로그아웃',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 4),
 
               Center(
                 child: TextButton(

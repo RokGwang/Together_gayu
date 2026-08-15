@@ -7,6 +7,7 @@ import 'chat/chat.dart';
 import 'tab_widget/widget.dart';
 import 'create/end2.dart'; // ⭐ import 추가
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'up.dart';
 
 
 class RoomPage extends StatefulWidget {
@@ -68,6 +69,19 @@ class _RoomPageState
     super.initState();
 
     loadRooms();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+      OnboardingPopup.showOnce(
+        context: context,
+        userId: widget.userId,
+        popupKey: "room",
+        title: "채팅방 목록이에요",
+        message: "엔빵/식사 탭으로 채팅방을 구분해서 볼 수 있고,\n검색으로 원하는 출발지·목적지를 바로 찾을 수 있어요",
+        icon: Icons.forum_rounded,
+      );
+
+    });
 
   }
 
@@ -1085,35 +1099,6 @@ class _RoomPageState
 
                   Row(
                     children: [
-
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isJoined
-                              ? accentColor.withOpacity(0.12)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-
-                          room["type"],
-
-                          style: TextStyle(
-
-                            fontSize: 11,
-
-                            color:
-                            isJoined
-                                ? accentColor
-                                : Colors.grey.shade600,
-
-                            fontWeight: FontWeight.w700,
-
-                          ),
-
-                        ),
-                      ),
-
                       if (isMine) ...[
 
                         const SizedBox(width: 6),
@@ -1216,10 +1201,10 @@ class _RoomPageState
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: room["time"] == null
-                                      ? Colors.grey.shade500
+                                      ? Colors.green.shade600
                                       : Colors.green.shade600,
                                   fontWeight: room["time"] == null
-                                      ? FontWeight.w500
+                                      ? FontWeight.w700
                                       : FontWeight.w700,
                                 ),
                               ),

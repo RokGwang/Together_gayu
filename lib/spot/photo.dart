@@ -4,24 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
-import 'map_view.dart';
+import '../map_view.dart';
 
 class PhotoPage extends StatefulWidget {
   final String regionName;
-
   const PhotoPage({
     super.key,
     required this.regionName,
   });
-
   @override
   State<PhotoPage> createState() => _PhotoPageState();
 }
 
 class _PhotoPageState extends State<PhotoPage> {
-
   static const Color primary = Color(0xFFFF7A00);
-
   late Future<List<dynamic>> _photoFuture;
   late PageController _pageController;
   int _currentPage = 0;
@@ -39,18 +35,16 @@ class _PhotoPageState extends State<PhotoPage> {
     super.dispose();
   }
 
+  // ⭐ galPhotographyLocation 대신 galTitle을 카카오맵에 바로 검색 (spot_ai.php와 동일한 방식)
   Future<void> _goToMap(Map<String, dynamic> photo) async {
 
-    final String location = photo['galPhotographyLocation'] ?? '';
+    final String title = (photo['galTitle'] ?? '').toString().trim();
 
-    if (location.isEmpty) {
-
+    if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("위치 정보가 없습니다")),
+        const SnackBar(content: Text("장소명 정보가 없습니다")),
       );
-
       return;
-
     }
 
     showDialog(
@@ -61,7 +55,9 @@ class _PhotoPageState extends State<PhotoPage> {
 
     try {
 
-      final url = '${dotenv.env['PHP_URL']}kakao_geocode.php?address=${Uri.encodeComponent(location)}';
+      final url = '${dotenv.env['PHP_URL']}photo.php'
+          '?title=${Uri.encodeComponent(title)}'
+          '&regionname=${Uri.encodeComponent(widget.regionName)}';
 
       final response = await http.get(Uri.parse(url));
 
@@ -77,9 +73,9 @@ class _PhotoPageState extends State<PhotoPage> {
           context,
           MaterialPageRoute(
             builder: (_) => MapViewPage(
-              lat: data["lat"],
-              lng: data["lng"],
-              title: photo['galTitle'] ?? location,
+              lat: (data["lat"] as num).toDouble(),
+              lng: (data["lng"] as num).toDouble(),
+              title: title,
             ),
           ),
         );
@@ -108,16 +104,13 @@ class _PhotoPageState extends State<PhotoPage> {
 
   Future<List<dynamic>> fetchFilteredPhotos() async {
     try {
-      final url = '${dotenv.env['PHP_URL']}api_photo2.php?keyword=${Uri.encodeComponent(widget.regionName)}&numOfRows=800';
+      final url = '${dotenv.env['PHP_URL']}api_photo.php?keyword=${Uri.encodeComponent(widget.regionName)}&numOfRows=800';
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final itemsContainer = data['response']?['body']?['items'];
         if (itemsContainer == null || itemsContainer is String) return [];
-
         List<dynamic> items = (itemsContainer['item'] is List) ? itemsContainer['item'] : [itemsContainer['item']];
-
         return items.where((item) {
           String location = item['galPhotographyLocation'] ?? '';
           return location.contains(widget.regionName);
@@ -131,8 +124,7 @@ class _PhotoPageState extends State<PhotoPage> {
 
   void _showFullImage(Map<String, dynamic> photo) {
     final String originalUrl = photo['galWebImageUrl'] ?? '';
-    final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
-
+    final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
@@ -150,7 +142,6 @@ class _PhotoPageState extends State<PhotoPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-
                       ClipRRect(
                         borderRadius: BorderRadius.circular(20),
                         child: InteractiveViewer(
@@ -171,9 +162,7 @@ class _PhotoPageState extends State<PhotoPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 14),
-
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(18),
@@ -184,7 +173,6 @@ class _PhotoPageState extends State<PhotoPage> {
                         ),
                         child: Row(
                           children: [
-
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,6 +189,15 @@ class _PhotoPageState extends State<PhotoPage> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
+                                    "id · ${photo['galContentId'] ?? '정보 없음'}",
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
                                     "작가 · ${photo['galPhotographer'] ?? '정보 없음'}",
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.7),
@@ -211,9 +208,7 @@ class _PhotoPageState extends State<PhotoPage> {
                                 ],
                               ),
                             ),
-
                             const SizedBox(width: 10),
-
                             _blurIconButton(
                               icon: Icons.location_on_rounded,
                               onTap: () {
@@ -221,18 +216,14 @@ class _PhotoPageState extends State<PhotoPage> {
                                 _goToMap(photo);
                               },
                             ),
-
                             const SizedBox(width: 8),
-
                             _blurIconButton(
                               icon: Icons.search_rounded,
                               onTap: () {},
                             ),
-
                           ],
                         ),
                       ),
-
                     ],
                   ),
                 ),
@@ -245,7 +236,6 @@ class _PhotoPageState extends State<PhotoPage> {
   }
 
   Widget _blurIconButton({required IconData icon, required VoidCallback onTap}) {
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -258,15 +248,12 @@ class _PhotoPageState extends State<PhotoPage> {
         child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
-
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       appBar: AppBar(
         title: Text(
           '${widget.regionName}의 사진',
@@ -282,17 +269,13 @@ class _PhotoPageState extends State<PhotoPage> {
         surfaceTintColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.black87),
       ),
-
       body: FutureBuilder<List<dynamic>>(
         future: _photoFuture,
         builder: (context, snapshot) {
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: primary));
           }
-
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -306,15 +289,11 @@ class _PhotoPageState extends State<PhotoPage> {
                 ],
               ),
             );
-
           }
-
           final photos = snapshot.data!;
           final int totalPages = (photos.length / 9).ceil();
-
           return Column(
             children: [
-
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
@@ -328,7 +307,6 @@ class _PhotoPageState extends State<PhotoPage> {
                     final int start = pageIndex * 9;
                     final int end = (start + 9 > photos.length) ? photos.length : start + 9;
                     final List<dynamic> pagePhotos = photos.sublist(start, end);
-
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                       child: GridView.builder(
@@ -340,14 +318,13 @@ class _PhotoPageState extends State<PhotoPage> {
                         ),
                         itemCount: pagePhotos.length,
                         itemBuilder: (context, index) {
-
                           return InkWell(
                             onTap: () => _showFullImage(pagePhotos[index]),
                             borderRadius: BorderRadius.circular(12),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: CachedNetworkImage(
-                                imageUrl: '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
+                                imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
                                 fit: BoxFit.cover,
                                 memCacheWidth: 200,
                                 placeholder: (context, url) => Container(
@@ -373,26 +350,20 @@ class _PhotoPageState extends State<PhotoPage> {
                   },
                 ),
               ),
-
               if (totalPages > 1)
-
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                   child: Row(
                     children: [
-
                       Text(
                         "${_currentPage + 1}",
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: primary),
                       ),
-
                       Text(
                         " / $totalPages",
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey.shade400),
                       ),
-
                       const SizedBox(width: 12),
-
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
@@ -421,11 +392,9 @@ class _PhotoPageState extends State<PhotoPage> {
                           ),
                         ),
                       ),
-
                     ],
                   ),
                 ),
-
             ],
           );
         },

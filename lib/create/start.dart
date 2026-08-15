@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'end.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../up.dart';
 
 class StartPage extends StatefulWidget {
 
@@ -34,9 +35,24 @@ class _StartPageState extends State<StartPage> {
 
   @override
   void initState() {
+
     super.initState();
 
     loadPlaces();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+      OnboardingPopup.showOnce(
+        context: context,
+        userId: widget.userId,
+        popupKey: "start",
+        title: "엔빵 채팅방을 만들어요",
+        message: "출발지를 선택하시면 목적지까지 함께 이동할\n사람들을 모을 수 있어요",
+        icon: Icons.directions_car_rounded,
+      );
+
+    });
+
   }
 
   Future<void> loadPlaces() async {

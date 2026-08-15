@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../chat/chat.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../chat/chat.dart';
+import '../up.dart';
 
 class GPSPage extends StatefulWidget {
 
@@ -31,7 +32,7 @@ class GPSPage extends StatefulWidget {
 
 enum _MatchStage { checkingPermission, permissionDenied, searching, matched, error }
 
-class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
+class _GPSPageState extends State<GPSPage> with TickerProviderStateMixin {
 
   static const Color primary = Color(0xFFFF7A00);
 
@@ -44,6 +45,9 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
   bool myApproved = false;
   bool partnerApproved = false;
+
+  int currentRadiusKm = 1; // ⭐ 추가: 현재 탐색 반경
+  late final AnimationController radiusChangeController; // ⭐ 추가: 반경 변경 시 튀는 애니메이션
 
   Timer? pollTimer;
   Timer? timeoutTimer;
@@ -62,7 +66,25 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
       duration: const Duration(seconds: 2),
     )..repeat();
 
+    radiusChangeController = AnimationController( // ⭐ 추가
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
     _init();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+      OnboardingPopup.showOnce(
+        context: context,
+        userId: widget.userId,
+        popupKey: "gps",
+        title: "실시간 매칭이란?",
+        message: "내 주변에서 같은 목적지로 가려는\n사람을 자동으로 찾아드려요. 거리는 최대 3km까지 넓어져요",
+        icon: Icons.near_me_rounded,
+      );
+
+    });
 
   }
 
@@ -72,8 +94,9 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
     pollTimer?.cancel();
     timeoutTimer?.cancel();
     pulseController.dispose();
+    radiusChangeController.dispose(); // ⭐ 추가
 
-    // 페이지를 벗어날 때 매칭 중이었다면 서버에도 취소 처리
+
     if (matchingId != null && stage != _MatchStage.error) {
       _cancelMatchingSilently();
     }
@@ -179,6 +202,7 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
     setState(() {
       stage = _MatchStage.searching;
+      currentRadiusKm = 1; // ⭐ 새 탐색 시작 시 반경 초기화
     });
 
     try {
@@ -256,7 +280,23 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
         final bool partnerCancelled = data["partner_cancelled"] == true;
 
-        // ⭐ 매칭 상태였다가 searching으로 돌아온 경우만 처리 (거절/취소로 인한 전환)
+        // ⭐ 서버가 계산한 현재 탐색 반경 반영
+        if (data["radius_km"] != null) {
+
+          final int newRadius = data["radius_km"];
+
+          if (newRadius != currentRadiusKm) {
+
+            setState(() {
+              currentRadiusKm = newRadius;
+            });
+
+            radiusChangeController.forward(from: 0); // ⭐ 반경이 바뀔 때마다 튀는 애니메이션 재생
+
+          }
+
+        }
+
         if (stage == _MatchStage.matched) {
 
           timeoutTimer?.cancel();
@@ -264,7 +304,6 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
           if (partnerCancelled) {
 
-            // ⭐ 상대방이 거절한 경우 - 확인 팝업을 띄운 뒤에만 재검색
             setState(() {
               myApproved = false;
               partnerApproved = false;
@@ -283,13 +322,11 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
             stage = _MatchStage.searching;
           });
 
-          // 서버 쪽 상태는 이미 searching이므로 새로 gps_start를 호출하지 않고 폴링만 재개
           pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
             checkMatching();
           });
 
         }
-        // 그 외(원래도 searching 상태였던 경우)는 별도 처리 없이 대기 계속
 
       } else if (status == "matched") {
 
@@ -298,7 +335,6 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
         if (stage != _MatchStage.matched) {
 
-          // 방금 매칭됨 -> 30초 타임아웃 시작
           setState(() {
             stage = _MatchStage.matched;
             myApproved = newMyApproved;
@@ -324,7 +360,7 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
         final roomId = data["room_id"];
 
-        matchingId = null; // dispose에서 재취소 방지
+        matchingId = null;
 
         if (!mounted) return;
 
@@ -438,7 +474,6 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
   }
 
-  // ⭐ "거절" 버튼 전용: 확인 팝업을 띄운 뒤에만 재검색 시작
   Future<void> declineMatching() async {
 
     timeoutTimer?.cancel();
@@ -483,7 +518,6 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
 
   }
 
-  // ⭐ 거절 관련 공통 안내 팝업
   Future<void> _showRestartNoticeDialog({
     required String title,
     required String message,
@@ -618,7 +652,6 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
         );
 
       }
-      // matched == false 인 경우 -> 계속 폴링하면서 상대 응답 대기
 
     } catch (e) {
 
@@ -918,13 +951,92 @@ class _GPSPageState extends State<GPSPage> with SingleTickerProviderStateMixin {
                 const SizedBox(height: 8),
 
                 Text(
-                  '1km 이내에서 "${widget.endPlace}"로\n같이 이동할 사람을 찾고 있어요',
+                  '${currentRadiusKm}km 이내에서 "${widget.endPlace}"로\n같이 이동할 사람을 찾고 있어요',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey.shade500,
                     fontWeight: FontWeight.w500,
                     height: 1.4,
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ⭐ 탐색 반경 안내 뱃지
+                const SizedBox(height: 14),
+
+// ⭐ 탐색 반경 안내 뱃지 (반경 커질 때마다 튀는 애니메이션 + 숫자 확대)
+                AnimatedBuilder(
+                  animation: radiusChangeController,
+                  builder: (context, child) {
+
+                    // 0 -> 1.3배로 확 커졌다가 -> 1배로 되돌아오는 튐 효과
+                    final double bounce = 1.0 +
+                        (radiusChangeController.value < 0.5
+                            ? radiusChangeController.value * 0.6
+                            : (1.0 - radiusChangeController.value) * 0.6);
+
+                    return Transform.scale(
+                      scale: bounce,
+                      child: child,
+                    );
+
+                  },
+                  child: Container(
+
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: primary.withOpacity(0.3), width: 1.2),
+                    ),
+
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+
+                        Icon(Icons.radar_rounded, size: 16, color: primary),
+
+                        const SizedBox(width: 8),
+
+                        const Text(
+                          "탐색 반경",
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: primary,
+                          ),
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        // ⭐ 숫자 부분만 크게, 값이 바뀔 때 AnimatedSwitcher로 전환 효과
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder: (child, animation) {
+
+                            return ScaleTransition(
+                              scale: animation,
+                              child: child,
+                            );
+
+                          },
+                          child: Text(
+                            "${currentRadiusKm}km",
+                            key: ValueKey<int>(currentRadiusKm), // ⭐ 값이 바뀔 때 애니메이션 감지용
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: primary,
+                            ),
+                          ),
+                        ),
+
+                      ],
+                    ),
+
                   ),
                 ),
 

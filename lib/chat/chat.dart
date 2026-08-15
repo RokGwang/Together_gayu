@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'mychat.dart';
 import '../tab_widget/tab_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../socket_service.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 import 'location_picker.dart';
-import '../spot/map_view.dart';
+import '../map_view.dart';
 
 class ChatPage extends StatefulWidget {
 
   final int roomId;
   final int userId;
+
 
   const ChatPage({
     super.key,
@@ -26,60 +26,11 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _AttachTile extends StatelessWidget {
-
-  final IconData icon;
-
-  final String label;
-
-  final Color color;
-
-  final VoidCallback onTap;
-
-  const _AttachTile({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return InkWell(
-
-      onTap: onTap,
-
-      borderRadius: BorderRadius.circular(16),
-
-      child: Container(
-
-        padding: const EdgeInsets.symmetric(vertical: 20),
-
-        decoration: BoxDecoration(
-          color: const Color(0xFFF7F7F9),
-          borderRadius: BorderRadius.circular(16),
-        ),
-
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 13)),
-          ],
-        ),
-
-      ),
-
-    );
-
-  }
-
-}
-
 class _ChatPageState extends State<ChatPage> {
 
   static const Color primary = Color(0xFFFF7A00);
+
+  static const String baseUrl = "http://35.216.34.21/together";
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -92,16 +43,21 @@ class _ChatPageState extends State<ChatPage> {
   bool isLoading = true;
   bool isSending = false;
   bool isSettling = false;
+  bool isAttaching = false;
+
+  int settlementPeopleCount = 1; // ⭐ 정산 인원수 상태
 
   int lastMessageId = 0;
 
   bool roomDeletedHandled = false;
 
-  bool kickedHandled = false; // ⭐ 강제 퇴장 중복 처리 방지
-
-  bool isAttaching = false; // ⭐ 사진/위치 전송 중 로딩
+  bool kickedHandled = false;
 
   Timer? pollTimer;
+  final String jsKey = "${dotenv.env['kakaojava']}";
+
+  // ⭐ 위치 미리보기용 WebViewController 캐시 (메시지마다 재생성되지 않도록)
+  final Map<int, WebViewController> _locationControllers = {};
 
   @override
   void initState() {
@@ -110,46 +66,7 @@ class _ChatPageState extends State<ChatPage> {
 
     loadMessages(initial: true);
 
-    // ⭐ 소켓 연결 후 이 방에 join
-    SocketService.instance.connect();
-    SocketService.instance.joinRoom(widget.roomId, widget.userId);
-
-    // ⭐ 실시간 새 메시지 수신
-    SocketService.instance.onNewMessage((data) {
-
-      if (!mounted) return;
-
-      final newMsg = Map<String, dynamic>.from(data);
-
-      // 이미 REST로 받아온 메시지와 중복되지 않도록 id 체크
-      final alreadyExists = messages.any((m) => m["id"].toString() == newMsg["id"].toString());
-
-      if (alreadyExists) return;
-
-      setState(() {
-        messages.add(newMsg);
-        lastMessageId = int.tryParse(newMsg["id"].toString()) ?? lastMessageId;
-      });
-
-      scrollToBottom();
-
-    });
-
-    // ⭐ 방장이 강제 퇴장/나가기/마감/정산 등 이벤트 발생 시 -> 가볍게 REST 재조회로 상태 갱신
-    for (final event in ["member_kicked", "member_left", "dead_toggled", "settlement_created"]) {
-
-      SocketService.instance.onRoomEvent(event, (_) {
-        loadMessages(initial: false);
-      });
-
-    }
-
-    SocketService.instance.onRoomEvent("room_deleted", (_) {
-      loadMessages(initial: false);
-    });
-
-    // ⭐ 안전망: 소켓이 끊겼을 경우를 대비한 저빈도 폴백 폴링 (30초)
-    pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       loadMessages(initial: false);
     });
 
@@ -162,13 +79,6 @@ class _ChatPageState extends State<ChatPage> {
     messageController.dispose();
     scrollController.dispose();
     amountController.dispose();
-
-    SocketService.instance.socket?.off('new_message');
-    SocketService.instance.socket?.off('member_kicked');
-    SocketService.instance.socket?.off('member_left');
-    SocketService.instance.socket?.off('dead_toggled');
-    SocketService.instance.socket?.off('settlement_created');
-    SocketService.instance.socket?.off('room_deleted');
 
     super.dispose();
   }
@@ -200,7 +110,6 @@ class _ChatPageState extends State<ChatPage> {
 
         if (!roomExists) {
 
-          // 방장이 나가서 방이 삭제된 경우
           if (!roomDeletedHandled) {
 
             roomDeletedHandled = true;
@@ -213,7 +122,6 @@ class _ChatPageState extends State<ChatPage> {
 
         }
 
-        // ⭐ 강제 퇴장 감지: 방은 존재하지만 내가 더 이상 room_member가 아님
         if (data["isMember"] == false) {
 
           if (!kickedHandled) {
@@ -250,9 +158,7 @@ class _ChatPageState extends State<ChatPage> {
         });
 
         if (!initial && newMessages.isNotEmpty) {
-
           scrollToBottom();
-
         }
 
       } else {
@@ -368,7 +274,6 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
-  // ⭐ 강제 퇴장 처리
   Future<void> handleKicked() async {
 
     pollTimer?.cancel();
@@ -494,47 +399,35 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
 
-      if (SocketService.instance.isConnected) {
+      final response = await http.post(
 
-        // ⭐ 소켓이 연결되어 있으면 실시간 전송
-        SocketService.instance.sendMessage(widget.roomId, widget.userId, text);
+        Uri.parse("${dotenv.env['PHP_URL']}send_message.php"),
+
+        headers: {"Content-Type": "application/json"},
+
+        body: jsonEncode({
+          "room_id": widget.roomId,
+          "user_id": widget.userId,
+          "message": text,
+        }),
+
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
 
         messageController.clear();
 
+        await loadMessages(initial: false);
+
       } else {
 
-        // ⭐ 소켓 연결이 안 되어 있으면 기존 REST 방식으로 대체 (안전망)
-        final response = await http.post(
+        if (!mounted) return;
 
-          Uri.parse("${dotenv.env['PHP_URL']}send_message.php"),
-
-          headers: {"Content-Type": "application/json"},
-
-          body: jsonEncode({
-            "room_id": widget.roomId,
-            "user_id": widget.userId,
-            "message": text,
-          }),
-
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "전송 실패")),
         );
-
-        final data = jsonDecode(response.body);
-
-        if (data["success"] == true) {
-
-          messageController.clear();
-
-          await loadMessages(initial: false);
-
-        } else {
-
-          if (!mounted) return;
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(data["message"] ?? "전송 실패")),
-          );
-
-        }
 
       }
 
@@ -557,6 +450,10 @@ class _ChatPageState extends State<ChatPage> {
     }
 
   }
+
+  // =========================
+  // 사진/위치 첨부
+  // =========================
 
   Future<void> showAttachmentSheet() async {
 
@@ -666,7 +563,6 @@ class _ChatPageState extends State<ChatPage> {
 
       }
 
-      // 실시간 소켓으로 이미 반영되지만, 혹시 몰라 안전하게 한 번 더 동기화
       await loadMessages(initial: false);
 
     } catch (e) {
@@ -743,154 +639,283 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
+  // =========================
+  // 정산
+  // =========================
+
   Future<void> showSettlementDialog() async {
 
     if (roomInfo == null) return;
 
     amountController.clear();
 
+    final int maxPeople = (roomInfo!["current_people"] ?? 1) is int
+        ? roomInfo!["current_people"]
+        : int.tryParse(roomInfo!["current_people"].toString()) ?? 1;
+
+    // ⭐ 다이얼로그 열 때마다 인원수를 방의 현재 최대 인원으로 초기화
+    settlementPeopleCount = maxPeople.clamp(1, maxPeople);
+
     await showDialog(
       context: context,
       useRootNavigator: false,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
 
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.calculate_rounded,
-                  color: primary,
-                  size: 28,
-                ),
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
               ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                "정산하기",
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                "현재 참여 인원 ${roomInfo!["current_people"]}명 기준으로\n금액을 나눠드려요",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade500,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              TextField(
-
-                controller: amountController,
-
-                keyboardType: TextInputType.number,
-
-                autofocus: true,
-
-                decoration: InputDecoration(
-
-                  hintText: "총 금액을 입력하세요",
-
-                  suffixText: "원",
-
-                  filled: true,
-
-                  fillColor: const Color(0xFFF7F7F9),
-
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-
-                ),
-
-              ),
-
-              const SizedBox(height: 24),
-
-              Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
 
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        "취소",
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.calculate_rounded,
+                      color: primary,
+                      size: 28,
                     ),
                   ),
 
-                  const SizedBox(width: 12),
+                  const SizedBox(height: 16),
 
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: () {
-
-                        Navigator.pop(context);
-
-                        sendSettlement();
-
-                      },
-                      child: const Text(
-                        "확인",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                  const Text(
+                    "정산하기",
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
                     ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    "총 금액과 나눌 인원을 입력해주세요",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  TextField(
+
+                    controller: amountController,
+
+                    keyboardType: TextInputType.number,
+
+                    autofocus: true,
+
+                    decoration: InputDecoration(
+
+                      hintText: "총 금액을 입력하세요",
+
+                      suffixText: "원",
+
+                      filled: true,
+
+                      fillColor: const Color(0xFFF7F7F9),
+
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+
+                    ),
+
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ⭐ 정산 인원수 선택
+                  Container(
+
+                    width: double.infinity,
+
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F7F9),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+
+                    child: Row(
+
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                      children: [
+
+                        Text(
+                          "정산 인원 (최대 $maxPeople명)",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+
+                        Row(
+                          children: [
+
+                            GestureDetector(
+                              onTap: () {
+
+                                if (settlementPeopleCount > 1) {
+
+                                  setDialogState(() {
+                                    settlementPeopleCount--;
+                                  });
+
+                                }
+
+                              },
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: settlementPeopleCount > 1
+                                      ? primary.withOpacity(0.12)
+                                      : Colors.grey.shade200,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.remove_rounded,
+                                  size: 16,
+                                  color: settlementPeopleCount > 1 ? primary : Colors.grey.shade400,
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(
+                              width: 36,
+                              child: Text(
+                                "$settlementPeopleCount명",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+
+                            GestureDetector(
+                              onTap: () {
+
+                                if (settlementPeopleCount < maxPeople) {
+
+                                  setDialogState(() {
+                                    settlementPeopleCount++;
+                                  });
+
+                                }
+
+                              },
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: settlementPeopleCount < maxPeople
+                                      ? primary.withOpacity(0.12)
+                                      : Colors.grey.shade200,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.add_rounded,
+                                  size: 16,
+                                  color: settlementPeopleCount < maxPeople ? primary : Colors.grey.shade400,
+                                ),
+                              ),
+                            ),
+
+                          ],
+                        ),
+
+                      ],
+
+                    ),
+
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  Row(
+                    children: [
+
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text(
+                            "취소",
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primary,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: () {
+
+                            Navigator.pop(context);
+
+                            sendSettlement();
+
+                          },
+                          child: const Text(
+                            "확인",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    ],
                   ),
 
                 ],
               ),
+            ),
+          );
 
-            ],
-          ),
-        ),
+        },
       ),
     );
 
@@ -929,14 +954,14 @@ class _ChatPageState extends State<ChatPage> {
         body: jsonEncode({
           "room_id": widget.roomId,
           "amount": amount,
-          "people": roomInfo!["current_people"],
+          "people": settlementPeopleCount, // ⭐ 사용자가 조정한 인원수 사용
         }),
 
       );
 
       final data = jsonDecode(response.body);
 
-      /*if (data["success"] == true) {
+      if (data["success"] == true) {
 
         await loadMessages(initial: false);
 
@@ -948,7 +973,7 @@ class _ChatPageState extends State<ChatPage> {
           const SnackBar(content: Text("정산 요청에 실패했습니다")),
         );
 
-      }*/
+      }
 
     } catch (e) {
 
@@ -969,6 +994,10 @@ class _ChatPageState extends State<ChatPage> {
     }
 
   }
+
+  // =========================
+  // 참여자/방장 관리
+  // =========================
 
   Future<List<dynamic>> fetchMembers() async {
 
@@ -1062,7 +1091,6 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
-  // ⭐ 강제 퇴장 API 호출
   Future<bool> kickMember(int targetUserId) async {
 
     try {
@@ -1119,7 +1147,6 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
-  // ⭐ 강제 퇴장 확인 팝업
   Future<void> confirmKick(String memberName, int targetUserId) async {
 
     final confirmed = await showDialog<bool>(
@@ -1238,7 +1265,7 @@ class _ChatPageState extends State<ChatPage> {
 
     if (success) {
 
-      Navigator.pop(context); // 참여자 시트 닫기
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("$memberName님을 강제 퇴장시켰습니다")),
@@ -1381,7 +1408,6 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                               ),
 
-                            // ⭐ 방장 전용 강제 퇴장 버튼 (본인/방장 본인 행에는 표시 안 함)
                             if (isOwner && !memberIsOwner) ...[
 
                               const SizedBox(width: 6),
@@ -1445,7 +1471,7 @@ class _ChatPageState extends State<ChatPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                const Text(
                                   "채팅방 마감",
                                   style: TextStyle(
                                     fontSize: 14,
@@ -1653,7 +1679,6 @@ class _ChatPageState extends State<ChatPage> {
     if (confirmed != true) return;
 
     if (ownerLeaving) {
-      // 방장 퇴장(=방 삭제)은 본인도 더 이상 폴링할 필요가 없으므로 타이머 정지
       pollTimer?.cancel();
     }
 
@@ -1713,6 +1738,10 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
+  // =========================
+  // 포맷/판별 헬퍼
+  // =========================
+
   String formatTime(String? createdAt) {
 
     if (createdAt == null) return "";
@@ -1729,21 +1758,6 @@ class _ChatPageState extends State<ChatPage> {
     final displayHour = hour % 12 == 0 ? 12 : hour % 12;
 
     return "$period $displayHour:$minute";
-
-  }
-
-  String formatTimeNoSeconds(String? time) {
-
-    if (time == null) return "";
-
-    // "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM"
-    final parts = time.split(":");
-
-    if (parts.length >= 2) {
-      return "${parts[0]}:${parts[1]}";
-    }
-
-    return time;
 
   }
 
@@ -1780,6 +1794,7 @@ class _ChatPageState extends State<ChatPage> {
     return isSystemMessage(msg) &&
         (msg["message"] ?? "").toString().startsWith("SETTLEMENT|");
   }
+
   bool isImageMessage(dynamic msg) {
     return (msg["message_type"] ?? "text") == "image";
   }
@@ -1788,11 +1803,97 @@ class _ChatPageState extends State<ChatPage> {
     return (msg["message_type"] ?? "text") == "location";
   }
 
+  String formatCurrency(int value) {
+
+    final str = value.toString();
+
+    final buffer = StringBuffer();
+
+    int count = 0;
+
+    for (int i = str.length - 1; i >= 0; i--) {
+
+      buffer.write(str[i]);
+
+      count++;
+
+      if (count % 3 == 0 && i != 0) {
+        buffer.write(',');
+      }
+
+    }
+
+    return buffer.toString().split('').reversed.join();
+
+  }
+
+  // ⭐ 위치 미리보기용 WebViewController를 메시지 id 기준으로 캐싱해서 재생성 방지
+  WebViewController _getLocationController(int messageId, double lat, double lng) {
+    if (_locationControllers.containsKey(messageId)) {
+      return _locationControllers[messageId]!;
+    }
+
+    final jsKey = dotenv.env['kakaojava'] ?? '';
+
+    final html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+      <style>
+        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=$jsKey"></script>
+      <script>
+        try {
+          var markerPosition = new kakao.maps.LatLng($lat, $lng);
+
+          var container = document.getElementById('map');
+          var options = {
+            center: markerPosition,
+            level: 4,
+            draggable: false,
+            scrollwheel: false
+          };
+          var map = new kakao.maps.Map(container, options);
+          map.setZoomable(false);
+
+          var marker = new kakao.maps.Marker({
+            position: markerPosition
+          });
+          marker.setMap(map);
+
+          // ⭐ 프리뷰 컨테이너 크기가 늦게 확정되는 문제 보정
+          setTimeout(function() {
+            map.relayout();
+            map.setCenter(markerPosition);
+          }, 150);
+
+        } catch (e) {}
+      </script>
+    </body>
+    </html>
+    """;
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
+      ..loadHtmlString(html);
+
+    _locationControllers[messageId] = controller;
+
+    return controller;
+  }
+
   Widget buildMessageBubbleContent(dynamic msg, bool isMine) {
 
     if (isImageMessage(msg)) {
 
-      final String imageUrl = "${dotenv.env['PHP_URL']}${msg["message"]}";
+      final String imageUrl = "$baseUrl/${msg["message"]}";
 
       return GestureDetector(
         onTap: () {
@@ -1834,7 +1935,10 @@ class _ChatPageState extends State<ChatPage> {
       final lat = double.tryParse(parts.isNotEmpty ? parts[0] : "") ?? 0;
       final lng = double.tryParse(parts.length > 1 ? parts[1] : "") ?? 0;
 
+      final int messageId = int.tryParse(msg["id"].toString()) ?? 0;
+
       return GestureDetector(
+
         onTap: () {
 
           Navigator.push(
@@ -1849,30 +1953,67 @@ class _ChatPageState extends State<ChatPage> {
           );
 
         },
-        child: Container(
-          width: 180,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isMine ? Colors.white.withOpacity(0.15) : const Color(0xFFF7F7F9),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.location_on_rounded, color: isMine ? Colors.white : primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "위치 공유됨",
-                  style: TextStyle(
-                    color: isMine ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+
+        child: ClipRRect(
+
+          borderRadius: BorderRadius.circular(12),
+
+          child: SizedBox(
+
+            width: 200,
+
+            height: 130,
+
+            child: Stack(
+
+              children: [
+
+                // ⭐ 인라인 지도 미리보기 (조작 불가, 탭하면 전체 지도로 이동)
+                IgnorePointer(
+                  child: WebViewWidget(
+                    controller: _getLocationController(messageId, lat, lng),
                   ),
                 ),
-              ),
-            ],
+
+                Positioned(
+
+                  left: 8,
+
+                  bottom: 8,
+
+                  child: Container(
+
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.location_on_rounded, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        const Text(
+                          "위치 공유됨",
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+
+                  ),
+
+                ),
+
+              ],
+
+            ),
+
           ),
+
         ),
+
       );
 
     }
@@ -1885,30 +2026,6 @@ class _ChatPageState extends State<ChatPage> {
         height: 1.3,
       ),
     );
-
-  }
-
-  String formatCurrency(int value) {
-
-    final str = value.toString();
-
-    final buffer = StringBuffer();
-
-    int count = 0;
-
-    for (int i = str.length - 1; i >= 0; i--) {
-
-      buffer.write(str[i]);
-
-      count++;
-
-      if (count % 3 == 0 && i != 0) {
-        buffer.write(',');
-      }
-
-    }
-
-    return buffer.toString().split('').reversed.join();
 
   }
 
@@ -1957,21 +2074,14 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ),
 
-              Row(
-                children: [
-                  Text(
-                    roomInfo!["time"] == null
-                        ? "시간 조율"
-                        : formatTimeNoSeconds(roomInfo!["time"]),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: roomInfo!["time"] == null
-                          ? Colors.grey.shade500
-                          : Colors.green.shade600,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+              Text(
+                "참여 ${roomInfo!["current_people"]}/${roomInfo!["people"]}명"
+                    "${roomInfo!["time"] == null ? " · 시간 조율" : ""}",
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade500,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
 
             ],
@@ -2057,297 +2167,44 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               )
-                : ListView.builder(
 
-                  controller: scrollController,
+                  : ListView.builder(
 
-                  reverse: true, // ⭐ 핵심: 리스트를 거꾸로 그려서 시작점(offset 0)이 항상 최신 메시지
+                controller: scrollController,
 
-                  padding: const EdgeInsets.fromLTRB(15, 15, 15, 15),
+                reverse: true,
 
-                  itemCount: messages.length,
+                padding: const EdgeInsets.fromLTRB(15, 15, 15, 15),
 
-                  itemBuilder: (context, index) {
+                itemCount: messages.length,
 
-                    final int reversedIndex = messages.length - 1 - index; // ⭐ 추가
+                itemBuilder: (context, index) {
 
-                    final msg = messages[reversedIndex]; // ⭐ index -> reversedIndex
+                  final int reversedIndex = messages.length - 1 - index;
 
-                    final bool isSystem = isSystemMessage(msg);
+                  final msg = messages[reversedIndex];
 
-                    final bool isSettlement = isSettlementMessage(msg);
+                  final bool isSystem = isSystemMessage(msg);
 
-                    final prevMsg = reversedIndex > 0 ? messages[reversedIndex - 1] : null; // ⭐ index -> reversedIndex
+                  final bool isSettlement = isSettlementMessage(msg);
 
-                    final showDateSeparator = prevMsg == null ||
-                        !isSameDate(prevMsg["created_at"], msg["created_at"]);
+                  final prevMsg = reversedIndex > 0 ? messages[reversedIndex - 1] : null;
 
-                    // ===== 정산 메시지 (전용 카드) =====
-                    if (isSettlement) {
+                  final nextMsg = reversedIndex + 1 < messages.length ? messages[reversedIndex + 1] : null;
 
-                      final parts = (msg["message"] as String).split("|");
+                  final showDateSeparator = prevMsg == null ||
+                      !isSameDate(prevMsg["created_at"], msg["created_at"]);
 
-                      final amount = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
-                      final people = int.tryParse(parts.length > 2 ? parts[2] : "1") ?? 1;
-                      final perPerson = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
+                  // ===== 정산 메시지 (전용 카드) =====
+                  if (isSettlement) {
 
-                      return Column(
-                        children: [
+                    final parts = (msg["message"] as String).split("|");
 
-                          if (showDateSeparator)
-
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Center(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    formatDateSeparator(msg["created_at"]),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          Padding(
-
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-
-                            child: Container(
-
-                              width: double.infinity,
-
-                              padding: const EdgeInsets.all(16),
-
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: primary.withOpacity(0.25)),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.03),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-
-                                  Row(
-                                    children: [
-
-                                      Container(
-                                        width: 32,
-                                        height: 32,
-                                        decoration: BoxDecoration(
-                                          color: primary.withOpacity(0.12),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          Icons.calculate_rounded,
-                                          size: 16,
-                                          color: primary,
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 8),
-
-                                      const Text(
-                                        "정산 요청",
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 12),
-
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "총 금액",
-                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                                      ),
-                                      Text(
-                                        "${formatCurrency(amount)}원",
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 4),
-
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "인원",
-                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                                      ),
-                                      Text(
-                                        "$people명",
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: primary.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          "1인당",
-                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          "${formatCurrency(perPerson)}원",
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w800,
-                                            color: primary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 12),
-
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () {
-                                        // 아직 기능 없음 (추후 구현 예정)
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: primary,
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                                      label: const Text(
-                                        "송금하기",
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                ],
-                              ),
-
-                            ),
-
-                          ),
-
-                        ],
-                      );
-
-                    }
-
-                    // ===== 일반 시스템 메시지 (입장/퇴장/강퇴 알림) =====
-                    if (isSystem) {
-
-                      return Column(
-                        children: [
-
-                          if (showDateSeparator)
-
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Center(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    formatDateSeparator(msg["created_at"]),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.05),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  msg["message"] ?? "",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        ],
-                      );
-
-                    }
-
-                    final isMine =
-                        msg["user_id"].toString() == widget.userId.toString();
-
-                    final isSameSenderAsPrev = prevMsg != null &&
-                        !showDateSeparator &&
-                        !isSystemMessage(prevMsg) &&
-                        prevMsg["user_id"].toString() == msg["user_id"].toString();
+                    final amount = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
+                    final people = int.tryParse(parts.length > 2 ? parts[2] : "1") ?? 1;
+                    final perPerson = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
 
                     return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
 
                         if (showDateSeparator)
@@ -2374,150 +2231,414 @@ class _ChatPageState extends State<ChatPage> {
                           ),
 
                         Padding(
-                          padding: EdgeInsets.only(top: isSameSenderAsPrev ? 3 : 12),
-                          child: Row(
 
-                            mainAxisAlignment: isMine
-                                ? MainAxisAlignment.end
-                                : MainAxisAlignment.start,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
 
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          child: Container(
 
-                            children: [
+                            width: double.infinity,
 
-                              if (!isMine) ...[
+                            padding: const EdgeInsets.all(16),
 
-                                isSameSenderAsPrev
-                                    ? const SizedBox(width: 32)
-                                    : CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: primary.withOpacity(0.15),
-                                  child: Text(
-                                    (msg["name"] ?? "?").toString().isNotEmpty
-                                        ? msg["name"].toString().substring(0, 1)
-                                        : "?",
-                                    style: TextStyle(
-                                      color: primary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                    ),
-                                  ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: primary.withOpacity(0.25)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
                                 ),
-
-                                const SizedBox(width: 8),
-
                               ],
+                            ),
 
-                              Flexible(
-                                child: Column(
-                                  crossAxisAlignment: isMine
-                                      ? CrossAxisAlignment.end
-                                      : CrossAxisAlignment.start,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+
+                                Row(
                                   children: [
 
-                                    if (!isMine && !isSameSenderAsPrev)
-
-                                      Padding(
-                                        padding: const EdgeInsets.only(bottom: 3, left: 2),
-                                        child: Text(
-                                          msg["name"] ?? "",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: primary.withOpacity(0.12),
+                                        shape: BoxShape.circle,
                                       ),
+                                      child: Icon(
+                                        Icons.calculate_rounded,
+                                        size: 16,
+                                        color: primary,
+                                      ),
+                                    ),
 
-                                    Row(
+                                    const SizedBox(width: 8),
 
-                                      mainAxisSize: MainAxisSize.min,
-
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-
-                                      children: [
-
-                                        if (isMine) ...[
-
-                                          Text(
-                                            formatTime(msg["created_at"]),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.grey.shade400,
-                                            ),
-                                          ),
-
-                                          const SizedBox(width: 6),
-
-                                        ],
-
-                                        Flexible(
-                                          child: Container(
-
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 10,
-                                            ),
-
-                                            constraints: const BoxConstraints(maxWidth: 240),
-
-                                            decoration: BoxDecoration(
-                                              color: isMine ? primary : Colors.white,
-                                              borderRadius: BorderRadius.only(
-                                                topLeft: const Radius.circular(16),
-                                                topRight: const Radius.circular(16),
-                                                bottomLeft: Radius.circular(isMine ? 16 : 4),
-                                                bottomRight: Radius.circular(isMine ? 4 : 16),
-                                              ),
-                                              boxShadow: isMine
-                                                  ? []
-                                                  : [
-                                                BoxShadow(
-                                                  color: Colors.black.withOpacity(0.04),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-
-                                            child: buildMessageBubbleContent(msg, isMine),
-
-                                          ),
-                                        ),
-
-                                        if (!isMine) ...[
-
-                                          const SizedBox(width: 6),
-
-                                          Text(
-                                            formatTime(msg["created_at"]),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.grey.shade400,
-                                            ),
-                                          ),
-
-                                        ],
-
-                                      ],
-
+                                    const Text(
+                                      "정산 요청",
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
                                     ),
 
                                   ],
                                 ),
+
+                                const SizedBox(height: 12),
+
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "총 금액",
+                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                    ),
+                                    Text(
+                                      "${formatCurrency(amount)}원",
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 4),
+
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "인원",
+                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                    ),
+                                    Text(
+                                      "$people명",
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: primary.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "1인당",
+                                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "${formatCurrency(perPerson)}원",
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      // 아직 기능 없음 (추후 구현 예정)
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primary,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
+                                    label: const Text(
+                                      "송금하기",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                              ],
+                            ),
+
+                          ),
+
+                        ),
+
+                      ],
+                    );
+
+                  }
+
+                  // ===== 일반 시스템 메시지 (입장/퇴장/강퇴 알림) =====
+                  if (isSystem) {
+
+                    return Column(
+                      children: [
+
+                        if (showDateSeparator)
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatDateSeparator(msg["created_at"]),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
+                            ),
+                          ),
 
-                            ],
-
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                msg["message"] ?? "",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
 
                       ],
                     );
 
-                  },
+                  }
 
-                ),
+                  final isMine =
+                      msg["user_id"].toString() == widget.userId.toString();
+
+                  final isSameSenderAsPrev = prevMsg != null &&
+                      !showDateSeparator &&
+                      !isSystemMessage(prevMsg) &&
+                      prevMsg["user_id"].toString() == msg["user_id"].toString();
+
+                  // ⭐ 같은 발신자 + 같은 분(minute) + 같은 날짜로 연속된 메시지 그룹의
+                  // 마지막 메시지에만 시간을 표시 (다음 메시지 기준으로 판단)
+                  final bool showTime = nextMsg == null
+                      || isSystemMessage(nextMsg)
+                      || nextMsg["user_id"].toString() != msg["user_id"].toString()
+                      || !isSameDate(nextMsg["created_at"], msg["created_at"])
+                      || formatTime(nextMsg["created_at"]) != formatTime(msg["created_at"]);
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+
+                      if (showDateSeparator)
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                formatDateSeparator(msg["created_at"]),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      Padding(
+                        padding: EdgeInsets.only(top: isSameSenderAsPrev ? 3 : 12),
+                        child: Row(
+
+                          mainAxisAlignment: isMine
+                              ? MainAxisAlignment.end
+                              : MainAxisAlignment.start,
+
+                          crossAxisAlignment: CrossAxisAlignment.end,
+
+                          children: [
+
+                            if (!isMine) ...[
+
+                              isSameSenderAsPrev
+                                  ? const SizedBox(width: 32)
+                                  : CircleAvatar(
+                                radius: 16,
+                                backgroundColor: primary.withOpacity(0.15),
+                                child: Text(
+                                  (msg["name"] ?? "?").toString().isNotEmpty
+                                      ? msg["name"].toString().substring(0, 1)
+                                      : "?",
+                                  style: TextStyle(
+                                    color: primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(width: 8),
+
+                            ],
+
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: isMine
+                                    ? CrossAxisAlignment.end
+                                    : CrossAxisAlignment.start,
+                                children: [
+
+                                  if (!isMine && !isSameSenderAsPrev)
+
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 3, left: 2),
+                                      child: Text(
+                                        msg["name"] ?? "",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ),
+
+                                  Row(
+
+                                    mainAxisSize: MainAxisSize.min,
+
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+
+                                    children: [
+
+                                      if (isMine && showTime) ...[
+
+                                        Text(
+                                          formatTime(msg["created_at"]),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        ),
+
+                                        const SizedBox(width: 6),
+
+                                      ],
+
+                                      Flexible(
+                                        child: Container(
+
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+
+                                          constraints: const BoxConstraints(maxWidth: 240),
+
+                                          decoration: BoxDecoration(
+                                            color: isMine ? primary : Colors.white,
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: const Radius.circular(16),
+                                              topRight: const Radius.circular(16),
+                                              bottomLeft: Radius.circular(isMine ? 16 : 4),
+                                              bottomRight: Radius.circular(isMine ? 4 : 16),
+                                            ),
+                                            boxShadow: isMine
+                                                ? []
+                                                : [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.04),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+
+                                          child: buildMessageBubbleContent(msg, isMine),
+
+                                        ),
+                                      ),
+
+                                      if (!isMine && showTime) ...[
+
+                                        const SizedBox(width: 6),
+
+                                        Text(
+                                          formatTime(msg["created_at"]),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        ),
+
+                                      ],
+
+                                    ],
+
+                                  ),
+
+                                ],
+                              ),
+                            ),
+
+                          ],
+
+                        ),
+                      ),
+
+                    ],
+                  );
+
+                },
+
+              ),
 
             ),
 
@@ -2545,6 +2666,7 @@ class _ChatPageState extends State<ChatPage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
 
                   children: [
+
                     GestureDetector(
 
                       onTap: isAttaching ? null : showAttachmentSheet,
@@ -2659,6 +2781,57 @@ class _ChatPageState extends State<ChatPage> {
         ),
 
       ),
+    );
+
+  }
+
+}
+
+class _AttachTile extends StatelessWidget {
+
+  final IconData icon;
+
+  final String label;
+
+  final Color color;
+
+  final VoidCallback onTap;
+
+  const _AttachTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    return InkWell(
+
+      onTap: onTap,
+
+      borderRadius: BorderRadius.circular(16),
+
+      child: Container(
+
+        padding: const EdgeInsets.symmetric(vertical: 20),
+
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7F9),
+          borderRadius: BorderRadius.circular(16),
+        ),
+
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: color, fontSize: 13)),
+          ],
+        ),
+
+      ),
+
     );
 
   }

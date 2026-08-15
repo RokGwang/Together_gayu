@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'spot/information.dart'; // 이 줄이 없으면 추가하세요.
 import 'dart:ui';
+import 'up.dart';
 
 // ===== 지역 정보 모델 =====
 class RegionInfo {
@@ -45,7 +46,7 @@ class IntroPage extends StatefulWidget {
 class _IntroPageState extends State<IntroPage> {
   Future<List<dynamic>> fetchPhotosByRegion(String regionName) async {
     try {
-      final url = '${dotenv.env['PHP_URL']}api_photo2.php?keyword=${Uri.encodeComponent(regionName)}&numOfRows=5';
+      final url = '${dotenv.env['PHP_URL']}api_photo.php?keyword=${Uri.encodeComponent(regionName)}&numOfRows=1000';
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -76,14 +77,28 @@ class _IntroPageState extends State<IntroPage> {
 
   Future<List<dynamic>> fetchGalleryByRegion(String regionName) async {
     try {
-      // photo2.php를 호출하고 keyword에 지역명을 넣습니다.
-      final url = '${dotenv.env['PHP_URL']}api_photo2.php?keyword=${Uri.encodeComponent(regionName)}&numOfRows=10';
-      final response = await http.get(Uri.parse(url));
+      // 1. popup.php를 호출하여 해당 지역의 pre_image ID 3개 가져오기
+      final popupUrl = '${dotenv.env['PHP_URL']}popup.php?name=${Uri.encodeComponent(regionName)}';
+      final popupResponse = await http.get(Uri.parse(popupUrl));
+
+      List<String> targetIds = [];
+      if (popupResponse.statusCode == 200) {
+        final popupData = jsonDecode(popupResponse.body);
+        if (popupData['pre_images'] != null) {
+          targetIds = List<String>.from(popupData['pre_images']);
+        }
+      }
+
+      // 만약 CSV에 등록된 ID가 없다면 빈 리스트 반환
+      if (targetIds.isEmpty) return [];
+
+      // 2. api_photo.php를 호출하여 numOfRows=1000으로 데이터 대량 가져오기
+      final photoUrl = '${dotenv.env['PHP_URL']}api_photo.php?keyword=${Uri.encodeComponent(regionName)}&numOfRows=1000';
+      final response = await http.get(Uri.parse(photoUrl));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        // API 응답 구조에 맞게 파싱
         final responseData = data['response'];
         if (responseData == null) return [];
 
@@ -96,7 +111,22 @@ class _IntroPageState extends State<IntroPage> {
         final items = itemsContainer['item'];
         if (items == null) return [];
 
-        return (items is List) ? items : [items];
+        List<dynamic> allPhotos = (items is List) ? items : [items];
+
+        // 3. targetIds(pre_image1, 2, 3)에 포함된 galContentId만 순서대로 필터링하여 최대 3개 추출
+        List<dynamic> filteredPhotos = [];
+        for (String id in targetIds) {
+          try {
+            final match = allPhotos.firstWhere(
+                  (photo) => photo['galContentId'].toString() == id,
+            );
+            filteredPhotos.add(match);
+          } catch (e) {
+            // 일치하는 ID가 없으면 무시
+          }
+        }
+
+        return filteredPhotos;
       }
     } catch (e) {
       debugPrint('통신 오류: $e');
@@ -129,8 +159,8 @@ class _IntroPageState extends State<IntroPage> {
 
   Future<Map<String, String>> fetchRegionData(String regionName) async {
     try {
-      // popup2.php 호출
-      final url = '${dotenv.env['PHP_URL']}popup2.php?name=${Uri.encodeComponent(regionName)}';
+      // popup.php 호출
+      final url = '${dotenv.env['PHP_URL']}popup.php?name=${Uri.encodeComponent(regionName)}';
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -149,9 +179,29 @@ class _IntroPageState extends State<IntroPage> {
     };
   }
 
+  @override
+  void initState() {
+
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+      OnboardingPopup.showOnce(
+        context: context,
+        userId: widget.userId,
+        popupKey: "mainview",
+        title: "같이가유에 오신 걸 환영해요!",
+        message: "지도 위 지역을 눌러서\n같은 목적지로 가는 사람들과 채팅방을 만들어보세요",
+        icon: Icons.celebration_rounded,
+      );
+
+    });
+
+  }
+
   void _showFullImage(Map<String, dynamic> photo) {
     final String originalUrl = photo['galWebImageUrl'] ?? '';
-    final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+    final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
 
     showDialog(
       context: context,
@@ -331,10 +381,11 @@ class _IntroPageState extends State<IntroPage> {
 
                         return ListView.separated(
                           scrollDirection: Axis.horizontal,
-                          itemCount: photos.length > 3 ? 4 : photos.length,
+                          itemCount: photos.length + 1, // 사진 개수 + "더 둘러보기" 버튼
                           separatorBuilder: (_, __) => const SizedBox(width: 8),
                           itemBuilder: (context, index) {
-                            if (index == 3) {
+                            // 마지막 인덱스(photos.length)에 "더 둘러보기" 버튼 배치
+                            if (index == photos.length) {
                               return InkWell(
                                 onTap: () {
                                   Navigator.pop(dialogContext);
@@ -348,13 +399,14 @@ class _IntroPageState extends State<IntroPage> {
                                 ),
                               );
                             }
+
                             // 썸네일 이미지 생성 부분
-                            final photo = photos[index]; // 1. 현재 인덱스의 데이터 가져오기
+                            final photo = photos[index];
                             final String originalUrl = photo['galWebImageUrl'] ?? '';
-                            final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+                            final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
 
                             return InkWell(
-                              onTap: () => _showFullImage(photo), // 2. URL 대신 전체 데이터(photo) 전달
+                              onTap: () => _showFullImage(photo),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: Image.network(

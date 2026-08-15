@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'login.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../tab_widget/tab_controller.dart';
 
 class WithdrawPage extends StatefulWidget {
 
@@ -154,8 +155,9 @@ class _WithdrawPageState extends State<WithdrawPage> {
 
       if (data["success"] == true) {
 
-        Navigator.pushAndRemoveUntil(
-          context,
+        AppTabController.reset(); // ⭐ 탭 상태 초기화 (import 필요: '../tab_widget/tab_controller.dart')
+
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil( // ⭐ rootNavigator: true 추가
           MaterialPageRoute(builder: (_) => const LoginPage()),
               (route) => false,
         );

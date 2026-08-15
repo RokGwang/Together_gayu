@@ -61,7 +61,7 @@ class _InformationPageState extends State<InformationPage> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: CachedNetworkImage(
-        imageUrl: '${dotenv.env['PHP_URL']}api_photo2.php?proxy_url=${Uri.encodeComponent(url)}',
+        imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(url)}',
         fit: BoxFit.cover,
         height: height,
         width: double.infinity,
@@ -340,7 +340,7 @@ class _InformationPageState extends State<InformationPage> {
                           ),
                           icon: Icon(Icons.map_rounded, color: primary, size: 18),
                           label: Text(
-                            '지도 보기',
+                            '관광지 목록',
                             style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14),
                           ),
                         ),

@@ -595,9 +595,9 @@ class _RoomCard extends StatelessWidget {
 
     final Color accentColor = isMeal ? mealColor : primary;
 
-    final bool isQuickMatch = room["user_id"] == null; // ⭐ 방장 없는 GPS 매칭방 판별
+    final bool isQuickMatch = room["user_id"] == null;
 
-    final int unreadCount = (room["unread_count"] ?? 0) is int // ⭐ 추가
+    final int unreadCount = (room["unread_count"] ?? 0) is int
         ? room["unread_count"]
         : int.tryParse(room["unread_count"].toString()) ?? 0;
 
@@ -607,7 +607,6 @@ class _RoomCard extends StatelessWidget {
 
     final bool isLastMessageSystem = room["last_message_user_id"] == null;
 
-// ⭐ 정산 메시지(SETTLEMENT|금액|인원|1인당)는 자연스러운 문구로 변환
     final String? lastMessage;
 
     if (rawLastMessage != null && rawLastMessage.startsWith("SETTLEMENT|")) {
@@ -653,246 +652,263 @@ class _RoomCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Stack(
-            children: [
+          children: [
 
-        Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+            // ⭐ 카드 본문 (Row) — Positioned를 여기서 완전히 제거
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
 
-          crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
-            children: [
+                children: [
 
-              // ===== 왼쪽 타입 아이콘 (카카오톡 프로필 이미지 자리) =====
-              Container(
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  type,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  style: TextStyle(
-                    color: accentColor,
-                    fontWeight: FontWeight.w800,
-                    fontSize: type.length >= 3 ? 13 : 16,
+                  // ===== 왼쪽 타입 아이콘 =====
+                  Container(
+                    width: 56,
+                    height: 56,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      type,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: accentColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: type.length >= 3 ? 13 : 16,
+                      ),
+                    ),
                   ),
-                ),
-              ),
 
-              const SizedBox(width: 14),
+                  const SizedBox(width: 14),
 
-              // ===== 오른쪽 정보 영역 =====
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-
-                    // 상단: 출발지 > 도착지 (+ 빠른매칭 표시)
-                    Row(
+                  // ===== 오른쪽 정보 영역 =====
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
 
-                        if (room["start"] != null) ...[
+                        // 상단: 출발지 > 도착지 (+ 빠른매칭 표시)
+                        Row(
+                          children: [
 
-                          Flexible(
-                            child: Text(
-                              "${room["start"]}",
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black87,
+                            if (room["start"] != null) ...[
+
+                              Flexible(
+                                child: Text(
+                                  "${room["start"]}",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                child: Icon(
+                                  Icons.arrow_forward_rounded,
+                                  size: 12,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ),
+
+                            ],
+
+                            Flexible(
+                              child: Text(
+                                "${room["end"] ?? ""}",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: accentColor,
+                                ),
                               ),
                             ),
-                          ),
 
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 12,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
+                            if (isQuickMatch) ...[
 
-                        ],
+                              const SizedBox(width: 6),
 
-                        Flexible(
-                          child: Text(
-                            "${room["end"] ?? ""}",
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueAccent.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  "빠른매칭",
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.blueAccent,
+                                  ),
+                                ),
+                              ),
+
+                            ],
+
+                          ],
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: (lastMessage != null && lastMessage.isNotEmpty)
+                              ? Text(
+                            isLastMessageSystem ? "· $lastMessage" : lastMessage,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: accentColor,
+                              color: isLastMessageSystem ? Colors.grey.shade400 : Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                              fontStyle: isLastMessageSystem ? FontStyle.italic : FontStyle.normal,
+                            ),
+                          )
+                              : Text(
+                            " ", // ⭐ 빈 문자열이 아닌 공백 한 칸으로 텍스트와 동일한 줄 높이를 유지
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.transparent,
                             ),
                           ),
                         ),
 
-                        if (isQuickMatch) ...[
+                        // 하단: 시간 + 인원 뱃지
+                        Row(
+                          children: [
 
-                          const SizedBox(width: 6),
+                            Expanded(
+                              child: Builder(
+                                builder: (context) {
 
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.blueAccent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text(
-                              "빠른매칭",
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.blueAccent,
+                                  final bool hasTime = room["time"] != null && room["time"].toString().isNotEmpty;
+
+                                  if (!hasTime && isQuickMatch) {
+                                    return const SizedBox.shrink();
+                                  }
+
+                                  return Row(
+                                    children: [
+
+                                      Icon(
+                                        Icons.schedule_rounded,
+                                        size: 13,
+                                        color: Colors.green.shade600, // ⭐ 회색 -> 초록색 고정
+                                      ),
+
+                                      const SizedBox(width: 4),
+
+                                      Flexible(
+                                        child: Text(
+                                          hasTime ? formatTimeNoSeconds(room["time"].toString()) : "시간 조율",
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.green.shade600, // ⭐ hasTime 조건 제거, 항상 초록색
+                                            fontWeight: FontWeight.w700, // ⭐ hasTime 조건 제거, 항상 굵게
+                                          ),
+                                        ),
+                                      ),
+
+                                    ],
+                                  );
+
+                                },
                               ),
                             ),
-                          ),
 
-                        ],
-
-                      ],
-                    ),
-
-                    const SizedBox(height: 6),
-                    if (lastMessage != null && lastMessage.isNotEmpty)
-
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          isLastMessageSystem ? "· $lastMessage" : lastMessage,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isLastMessageSystem ? Colors.grey.shade400 : Colors.grey.shade600,
-                            fontWeight: FontWeight.w500,
-                            fontStyle: isLastMessageSystem ? FontStyle.italic : FontStyle.normal,
-                          ),
-                        ),
-                      ),
-
-
-                    // 하단: 시간 + 인원 뱃지
-                    Row(
-                      children: [
-
-                        Icon(
-                          Icons.schedule_rounded,
-                          size: 13,
-                          color: Colors.grey.shade400,
-                        ),
-
-                        const SizedBox(width: 4),
-
-                        Expanded(
-                          child: Builder(
-                            builder: (context) {
-
-                              final bool hasTime = room["time"] != null && room["time"].toString().isNotEmpty;
-
-                              // ⭐ 빠른매칭 방은 시간이 없어도 "시간 조율" 문구를 표시하지 않음
-                              if (!hasTime && isQuickMatch) {
-                                return const SizedBox.shrink();
-                              }
-
-                              return Text(
-                                hasTime ? formatTimeNoSeconds(room["time"].toString()) : "시간 조율",
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11, // ⭐ 12 -> 11로 축소
-                                  color: hasTime ? Colors.green.shade600 : Colors.grey.shade500,
-                                  fontWeight: hasTime ? FontWeight.w700 : FontWeight.w500,
-                                ),
-                              );
-
-                            },
-                          ),
-                        ),
-
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF7F7F9),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.person_rounded,
-                                size: 10,
-                                color: Colors.black45,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
                               ),
-                              const SizedBox(width: 2),
-                              Text(
-                                "$currentPeople/$maxPeople",
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 9,
-                                  color: Colors.black54,
-                                ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7F7F9),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                            ],
-                          ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.person_rounded,
+                                    size: 10,
+                                    color: Colors.black45,
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    "$currentPeople/$maxPeople",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 9,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          ],
                         ),
 
                       ],
                     ),
+                  ),
 
-                  ],
-                ),
+                ],
               ),
-              if (unreadCount > 0)
+            ),
 
-                Positioned(
+            // ⭐ 안읽음 뱃지: Stack의 직속 자식으로 이동 (카드 전체 기준 절대 위치)
+            if (unreadCount > 0)
 
-                  top: 10,
+              Positioned(
 
-                  right: 10,
+                top: 10,
 
-                  child: Container(
+                right: 10,
 
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                child: Container(
 
-                    constraints: const BoxConstraints(minWidth: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
 
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+                  constraints: const BoxConstraints(minWidth: 20),
 
-                    child: Text(
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
 
-                      unreadCount > 99 ? "99+" : "$unreadCount",
+                  child: Text(
 
-                      textAlign: TextAlign.center,
+                    unreadCount > 99 ? "99+" : "$unreadCount",
 
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    textAlign: TextAlign.center,
 
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
 
                   ),
 
                 ),
 
-            ],
-          ),
-        ),
-      ],
+              ),
+
+          ],
         ),
       ),
     );

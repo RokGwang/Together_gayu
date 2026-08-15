@@ -30,4 +30,10 @@ class AppTabController {
 
   }
 
+  static void reset() {
+
+    currentIndex.value = 0;
+
+  }
+
 }

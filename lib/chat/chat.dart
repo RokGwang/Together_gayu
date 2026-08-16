@@ -53,6 +53,8 @@ class _ChatPageState extends State<ChatPage> {
 
   bool kickedHandled = false;
 
+  bool timeExpiredNotified = false; // ⭐ 추가
+
   Timer? pollTimer;
   final String jsKey = "${dotenv.env['kakaojava']}";
 
@@ -156,6 +158,17 @@ class _ChatPageState extends State<ChatPage> {
           isLoading = false;
 
         });
+
+        if (data["expired"] == true && !timeExpiredNotified) {
+
+          timeExpiredNotified = true;
+
+          // 팝업은 setState 이후에 띄워야 하므로, 아래 setState 완료 후 별도로 호출
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showTimeExpiredDialog();
+          });
+
+        }
 
         if (!initial && newMessages.isNotEmpty) {
           scrollToBottom();
@@ -366,6 +379,94 @@ class _ChatPageState extends State<ChatPage> {
     if (!mounted) return;
 
     goToMyChat();
+
+  }
+
+  Future<void> _showTimeExpiredDialog() async {
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.schedule_rounded,
+                  color: Colors.redAccent,
+                  size: 28,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              const Text(
+                "채팅방 노출이 종료되었습니다",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                "지정된 시간으로부터 시간이 지나서\n채팅방이 노출되지 않아요",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "확인",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+
+            ],
+          ),
+        ),
+      ),
+    );
 
   }
 

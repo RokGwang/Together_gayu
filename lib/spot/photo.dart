@@ -35,10 +35,9 @@ class _PhotoPageState extends State<PhotoPage> {
     super.dispose();
   }
 
-  // ⭐ galPhotographyLocation 대신 galTitle을 카카오맵에 바로 검색 (spot_ai.php와 동일한 방식)
-  Future<void> _goToMap(Map<String, dynamic> photo) async {
-
-    final String title = (photo['galTitle'] ?? '').toString().trim();
+  // ⭐ 로딩 다이얼로그(showDialog) 완전 제거 -> pop 후 fetch, 그 다음 push 한 번만.
+  // spot2.dart의 "미리보기 탭 -> 바로 push"와 동일한 구조.
+  Future<void> _goToMap(String title) async {
 
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -47,10 +46,12 @@ class _PhotoPageState extends State<PhotoPage> {
       return;
     }
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => Center(child: CircularProgressIndicator(color: primary)),
+    // 로딩 안내는 스낵바로만 (네비게이터 스택을 건드리지 않음)
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("위치를 찾는 중이에요..."),
+        duration: Duration(seconds: 2),
+      ),
     );
 
     try {
@@ -65,10 +66,9 @@ class _PhotoPageState extends State<PhotoPage> {
 
       if (!mounted) return;
 
-      Navigator.pop(context);
-
       if (data["success"] == true) {
 
+        // ⭐ 여기서 pop 없이, 순수 push 한 번만 실행 (spot2.dart와 동일)
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -91,8 +91,6 @@ class _PhotoPageState extends State<PhotoPage> {
     } catch (e) {
 
       if (!mounted) return;
-
-      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("에러 발생: $e")),
@@ -125,6 +123,8 @@ class _PhotoPageState extends State<PhotoPage> {
   void _showFullImage(Map<String, dynamic> photo) {
     final String originalUrl = photo['galWebImageUrl'] ?? '';
     final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+    final String title = (photo['galTitle'] ?? '').toString().trim();
+
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
@@ -212,8 +212,9 @@ class _PhotoPageState extends State<PhotoPage> {
                             _blurIconButton(
                               icon: Icons.location_on_rounded,
                               onTap: () {
+                                // ⭐ 팝업만 닫고, 곧바로 fetch -> push (그 사이에 다른 다이얼로그 없음)
                                 Navigator.pop(context);
-                                _goToMap(photo);
+                                _goToMap(title);
                               },
                             ),
                             const SizedBox(width: 8),

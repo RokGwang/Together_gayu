@@ -595,7 +595,8 @@ class _RoomCard extends StatelessWidget {
 
     final Color accentColor = isMeal ? mealColor : primary;
 
-    final bool isQuickMatch = room["user_id"] == null;
+    final bool isQuickMatch = room["user_id"] == null &&
+        (room["time"] == null || room["time"].toString().trim().isEmpty);
 
     final int unreadCount = (room["unread_count"] ?? 0) is int
         ? room["unread_count"]

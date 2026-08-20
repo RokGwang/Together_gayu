@@ -8,110 +8,76 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../main.dart';
 import 'login.dart';
 import '../tab_widget/tab_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ⭐ 추가
 
 class UserPage extends StatefulWidget {
-
   final int userId;
-
   const UserPage({
     super.key,
     required this.userId,
   });
-
   @override
   State<UserPage> createState() => _UserPageState();
 }
 
 class _UserPageState extends State<UserPage> {
-
   static const Color primary = Color(0xFFFF7A00);
-
   bool loading = true;
-
   String name = "";
-
   int id = 0;
 
   @override
   void initState() {
-
     super.initState();
-
     loadUser();
-
   }
 
   Future<void> loadUser() async {
-
     setState(() {
       loading = true;
     });
-
     try {
-
       final response = await http.get(
         Uri.parse(
           "${dotenv.env['PHP_URL']}user.php"
               "?user_id=${widget.userId}",
         ),
       );
-
       final data = jsonDecode(response.body);
-
       if (!mounted) return;
-
       if (data["success"]) {
-
         setState(() {
-
           name = data["user"]["name"];
-
           id = int.parse(data["user"]["id"].toString());
-
           loading = false;
-
         });
-
       } else {
-
         setState(() {
           loading = false;
         });
-
       }
-
     } catch (e) {
-
       if (!mounted) return;
-
       setState(() {
         loading = false;
       });
-
     }
-
   }
 
   Future<void> goToUpdatePage() async {
-
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => UserUpdatePage(userId: widget.userId),
       ),
     );
-
     // ⭐ user_update.dart에서 저장 성공(true) 신호를 받으면 새로고침
     if (result == true) {
-
       loadUser();
-
     }
-
   }
 
   Future<void> showLogoutDialog() async {
-
     final confirmed = await showDialog<bool>(
       context: context,
       useRootNavigator: false,
@@ -126,7 +92,6 @@ class _UserPageState extends State<UserPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               Container(
                 width: 56,
                 height: 56,
@@ -140,9 +105,7 @@ class _UserPageState extends State<UserPage> {
                   size: 28,
                 ),
               ),
-
               const SizedBox(height: 16),
-
               const Text(
                 "로그아웃 하시겠습니까?",
                 style: TextStyle(
@@ -151,12 +114,9 @@ class _UserPageState extends State<UserPage> {
                   color: Colors.black87,
                 ),
               ),
-
               const SizedBox(height: 24),
-
               Row(
                 children: [
-
                   Expanded(
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
@@ -176,9 +136,7 @@ class _UserPageState extends State<UserPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
                   Expanded(
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -199,36 +157,31 @@ class _UserPageState extends State<UserPage> {
                       ),
                     ),
                   ),
-
                 ],
               ),
-
             ],
           ),
         ),
       ),
     );
-
     if (confirmed != true) return;
 
+    // ⭐ 추가: 저장된 로그인 정보 삭제
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_id');
+
     AppTabController.reset(); // ⭐ 탭 상태 초기화
-
     if (!mounted) return;
-
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil( // ⭐ rootNavigator: true 추가
       MaterialPageRoute(builder: (_) => const LoginPage()),
           (route) => false,
     );
-
   }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text(
@@ -244,29 +197,18 @@ class _UserPageState extends State<UserPage> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-
       body: loading
-
           ? Center(
         child: CircularProgressIndicator(color: primary),
       )
-
           : SafeArea(
-
         child: Padding(
-
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-
           child: Column(
-
             crossAxisAlignment: CrossAxisAlignment.stretch,
-
             children: [
-
               Container(
-
                 padding: const EdgeInsets.symmetric(vertical: 28),
-
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
@@ -278,10 +220,8 @@ class _UserPageState extends State<UserPage> {
                     ),
                   ],
                 ),
-
                 child: Column(
                   children: [
-
                     Container(
                       width: 96,
                       height: 96,
@@ -295,9 +235,7 @@ class _UserPageState extends State<UserPage> {
                         size: 48,
                       ),
                     ),
-
                     const SizedBox(height: 18),
-
                     Text(
                       name,
                       style: const TextStyle(
@@ -306,9 +244,7 @@ class _UserPageState extends State<UserPage> {
                         color: Colors.black87,
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Text(
                       "ID $id",
                       style: TextStyle(
@@ -317,9 +253,7 @@ class _UserPageState extends State<UserPage> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-
                     const SizedBox(height: 20),
-
                     // ⭐ 회원정보 수정 버튼
                     TextButton.icon(
                       onPressed: goToUpdatePage,
@@ -334,14 +268,10 @@ class _UserPageState extends State<UserPage> {
                         style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 13),
                       ),
                     ),
-
                   ],
                 ),
-
               ),
-
               const Spacer(),
-
               // ⭐ 로그아웃 버튼
               Center(
                 child: TextButton(
@@ -357,20 +287,16 @@ class _UserPageState extends State<UserPage> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 4),
-
               Center(
                 child: TextButton(
                   onPressed: () {
-
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => WithdrawPage(userId: widget.userId),
                       ),
                     );
-
                   },
                   child: Text(
                     '회원 탈퇴',
@@ -383,19 +309,13 @@ class _UserPageState extends State<UserPage> {
                   ),
                 ),
               ),
-
             ],
-
           ),
-
         ),
-
       ),
-
       bottomNavigationBar: BottomWidget(
         userId: widget.userId,
       ),
-
     );
   }
 }

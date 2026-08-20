@@ -5,26 +5,20 @@ import 'package:http/http.dart' as http;
 import 'create/start.dart';
 import 'chat/chat.dart';
 import 'tab_widget/widget.dart';
-import 'create/end2.dart'; // ⭐ import 추가
+import 'create/end2.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'up.dart';
 
-
 class RoomPage extends StatefulWidget {
-
   final int userId;
-
   final String roomTable;
-
   final String roomTitle;
-
   const RoomPage({
     super.key,
     required this.userId,
     required this.roomTable,
     required this.roomTitle,
   });
-
   @override
   State<RoomPage> createState()
   => _RoomPageState();
@@ -32,46 +26,37 @@ class RoomPage extends StatefulWidget {
 
 class _RoomPageState
     extends State<RoomPage>{
-
   List<dynamic> rooms = [];
-
   bool loading=true;
-
   static const Color primary = Color(0xFFFF7A00);
-
   static const Color mealColor = Color(0xFFFFC107); // ⭐ 식사 전용 노란색
-
   Set<String> joinedRoomIds = {};
-
   String selectedType = "엔빵"; // ⭐ 기본값 엔빵
 
-  final TextEditingController searchController = TextEditingController(); // ⭐ 검색어
+  // ⭐ 엔빵: 출발지/목적지 각각 선택값 + 적용된 필터값
+  String? selectedStartName;
+  String? selectedEndName;
+  String appliedStartFilter = "";
+  String appliedEndFilter = "";
 
-  String searchQuery = "";
+  // ⭐ 식사: 장소 선택값 + 적용된 필터값
+  String? selectedMealName;
+  String appliedMealFilter = "";
 
   String formatTimeNoSeconds(String? time) {
-
     if (time == null) return "";
-
     final parts = time.split(":");
-
     if (parts.length >= 2) {
       return "${parts[0]}:${parts[1]}";
     }
-
     return time;
-
   }
 
   @override
   void initState() {
-
     super.initState();
-
     loadRooms();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-
       OnboardingPopup.showOnce(
         context: context,
         userId: widget.userId,
@@ -80,111 +65,74 @@ class _RoomPageState
         message: "엔빵/식사 탭으로 채팅방을 구분해서 볼 수 있고,\n검색으로 원하는 출발지·목적지를 바로 찾을 수 있어요",
         icon: Icons.forum_rounded,
       );
-
     });
-
   }
 
   @override
   void dispose() {
-
-    searchController.dispose();
-
     super.dispose();
-
   }
 
   Future<void> loadRooms() async {
-
     setState(() {
       loading = true;
     });
-
     try {
-
       final response =
       await http.get(
-
         Uri.parse(
           "${dotenv.env['PHP_URL']}room.php?table=${widget.roomTable}",
         ),
-
       );
-
       final data =
       jsonDecode(
         response.body,
       );
-
       if (!mounted) return;
-
       if (data["success"] == true) {
-
         rooms =
         List<dynamic>.from(
           data["rooms"] ?? [],
         );
-
         rooms.sort((a, b) {
-
           final aMine =
               a["user_id"].toString()
                   ==
                   widget.userId.toString();
-
           final bMine =
               b["user_id"].toString()
                   ==
                   widget.userId.toString();
-
           if (
           aMine == bMine
           ) {
             return 0;
           }
-
           return aMine
               ? -1
               : 1;
-
         });
-
       } else {
-
         rooms = [];
       }
-
-      // 방 목록을 불러온 뒤, 각 방에 대해 내가 참여중인지 확인 (check_room.php 그대로 사용)
       await loadJoinedStatus();
-
       if (!mounted) return;
-
       setState(() {
         loading = false;
       });
-
     } catch (e) {
-
       if (!mounted) return;
-
       setState(() {
         loading = false;
       });
-
     }
-
   }
 
   Future<void> loadJoinedStatus() async {
-
     final Set<String> joined = {};
-
     await Future.wait(
-
       rooms.map((room) async {
-
         try {
-
           final res = await http.post(
             Uri.parse("${dotenv.env['PHP_URL']}check_room.php"),
             headers: {"Content-Type": "application/json"},
@@ -193,58 +141,383 @@ class _RoomPageState
               "user_id": widget.userId,
             }),
           );
-
           final data = jsonDecode(res.body);
-
           if (data["success"] == true && data["isJoined"] == true) {
-
             joined.add(room["id"].toString());
-
           }
-
         } catch (e) {
-
           // 개별 방 조회 실패는 무시하고 넘어감
-
         }
-
       }),
+    );
+    joinedRoomIds = joined;
+  }
 
+  // ⭐ 엔빵용: create.php에서 type0/type1 이름 목록을 한 번에 가져옴
+  Future<Map<String, List<String>>> _fetchCreateSpotNames() async {
+
+    try {
+
+      final response = await http.get(
+        Uri.parse("${dotenv.env['PHP_URL']}create.php?roomTable=${widget.roomTable}"),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
+
+        final List<dynamic> t0 = data["type0"] ?? [];
+        final List<dynamic> t1 = data["type1"] ?? [];
+
+        return {
+          "type0": t0.map((e) => (e["name"] ?? "").toString()).where((e) => e.isNotEmpty).toList(),
+          "type1": t1.map((e) => (e["name"] ?? "").toString()).where((e) => e.isNotEmpty).toList(),
+        };
+
+      }
+
+    } catch (e) {
+      // 무시
+    }
+
+    return {"type0": <String>[], "type1": <String>[]};
+
+  }
+
+// ⭐ 식사용: end.php(type=1)만 그대로 사용
+  Future<List<String>> _fetchMealSpotNames() async {
+
+    try {
+
+      final response = await http.get(
+        Uri.parse("${dotenv.env['PHP_URL']}end.php?roomTable=${widget.roomTable}"),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
+
+        final List<dynamic> spots = data["spots"] ?? [];
+
+        return spots.map((e) => (e["name"] ?? "").toString()).where((e) => e.isNotEmpty).toList();
+
+      }
+
+    } catch (e) {
+      // 무시
+    }
+
+    return [];
+
+  }
+
+  // ⭐ 출발지/목적지/식사장소 선택 팝업 (바텀시트)
+  // ⭐ 엔빵 출발지/목적지 검색 팝업 (출발 엔빵/리턴 엔빵 탭 포함)
+  void _showSpotPickerWithTabs({
+    required bool isStart, // true = 출발지 검색, false = 목적지 검색
+    required void Function(String name) onSelected,
+  }) {
+
+    bool showingFirstTab = true; // "출발 엔빵" 탭이 기본값
+
+    final Future<Map<String, List<String>>> futureSpots = _fetchCreateSpotNames();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+
+            // isStart=true : "출발 엔빵" -> type0, "리턴 엔빵" -> type1
+            // isStart=false: "출발 엔빵" -> type1, "리턴 엔빵" -> type0
+            final String currentTypeKey = isStart
+                ? (showingFirstTab ? "type0" : "type1")
+                : (showingFirstTab ? "type0" : "type1");
+
+            return Container(
+
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+
+                  Text(
+                    isStart ? "출발지 선택" : "목적지 선택",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+
+                      Expanded(
+                        child: _PickerTabButton(
+                          label: "교통지",
+                          selected: showingFirstTab,
+                          color: primary,
+                          onTap: () => setModalState(() => showingFirstTab = true),
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      Expanded(
+                        child: _PickerTabButton(
+                          label: "관광지",
+                          selected: !showingFirstTab,
+                          color: Colors.blueAccent,
+                          onTap: () => setModalState(() => showingFirstTab = false),
+                        ),
+                      ),
+
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Flexible(
+
+                    child: FutureBuilder<Map<String, List<String>>>(
+
+                      future: futureSpots,
+
+                      builder: (context, snapshot) {
+
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 32),
+                            child: Center(child: CircularProgressIndicator(color: primary)),
+                          );
+
+                        }
+
+                        final data = snapshot.data ?? {"type0": <String>[], "type1": <String>[]};
+
+                        final names = data[currentTypeKey] ?? [];
+
+                        if (names.isEmpty) {
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 32),
+                            child: Center(
+                              child: Text("선택 가능한 장소가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                            ),
+                          );
+
+                        }
+
+                        return ListView.separated(
+
+                          shrinkWrap: true,
+
+                          itemCount: names.length,
+
+                          separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
+
+                          itemBuilder: (context, index) {
+
+                            final name = names[index];
+
+                            return ListTile(
+
+                              contentPadding: EdgeInsets.zero,
+
+                              title: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+
+                              trailing: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300, size: 20),
+
+                              onTap: () {
+                                onSelected(name);
+                                Navigator.pop(context);
+                              },
+
+                            );
+
+                          },
+
+                        );
+
+                      },
+
+                    ),
+
+                  ),
+
+                ],
+              ),
+
+            );
+
+          },
+        );
+
+      },
     );
 
-    joinedRoomIds = joined;
+  }
+
+// ⭐ 식사 장소 검색 팝업 (탭 없음, end.php만 사용)
+  void _showMealSpotPicker({
+    required void Function(String name) onSelected,
+  }) {
+
+    final Future<List<String>> futureNames = _fetchMealSpotNames();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+
+        return Container(
+
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+
+              const Text(
+                "식사 장소 선택",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+              ),
+
+              const SizedBox(height: 16),
+
+              Flexible(
+
+                child: FutureBuilder<List<String>>(
+
+                  future: futureNames,
+
+                  builder: (context, snapshot) {
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(child: CircularProgressIndicator(color: primary)),
+                      );
+
+                    }
+
+                    final names = snapshot.data ?? [];
+
+                    if (names.isEmpty) {
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Center(
+                          child: Text("선택 가능한 장소가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                        ),
+                      );
+
+                    }
+
+                    return ListView.separated(
+
+                      shrinkWrap: true,
+
+                      itemCount: names.length,
+
+                      separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
+
+                      itemBuilder: (context, index) {
+
+                        final name = names[index];
+
+                        return ListTile(
+
+                          contentPadding: EdgeInsets.zero,
+
+                          title: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+
+                          trailing: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300, size: 20),
+
+                          onTap: () {
+                            onSelected(name);
+                            Navigator.pop(context);
+                          },
+
+                        );
+
+                      },
+
+                    );
+
+                  },
+
+                ),
+
+              ),
+
+            ],
+          ),
+
+        );
+
+      },
+    );
 
   }
 
   void showMenuPopup(){
-
     showModalBottomSheet(
-
       context: context,
-
       backgroundColor: Colors.transparent,
-
       builder: (_){
-
         return Container(
-
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(28),
             ),
           ),
-
           child: Column(
-
             mainAxisSize: MainAxisSize.min,
-
             crossAxisAlignment: CrossAxisAlignment.stretch,
-
             children: [
-
               Center(
                 child: Container(
                   width: 40,
@@ -256,7 +529,6 @@ class _RoomPageState
                   ),
                 ),
               ),
-
               const Text(
                 "무엇을 만들까요?",
                 style: TextStyle(
@@ -265,93 +537,59 @@ class _RoomPageState
                   color: Colors.black87,
                 ),
               ),
-
               const SizedBox(height: 20),
-
               _MenuTile(
                 icon: Icons.directions_car_rounded,
                 label: "엔빵",
                 subtitle: "교통비를 나눠서 정산해요",
                 color: primary,
                 onTap: (){
-
                   Navigator.pop(context);
-
                   Navigator.push(
-
                     context,
-
                     MaterialPageRoute(
-
                       builder: (_) => StartPage(
                         userId: widget.userId,
                         type: "엔빵",
                         roomTable: widget.roomTable,
                       ),
-
                     ),
-
                   ).then((_) {
-
                     loadRooms();
-
                   });
-
                 },
               ),
-
               const SizedBox(height: 12),
-
               _MenuTile(
                 icon: Icons.restaurant_rounded,
                 label: "식사",
                 subtitle: "식비를 나눠서 정산해요",
-                color: mealColor, // ⭐ 노란색으로 변경
-
+                color: mealColor,
                 onTap: (){
-
                   Navigator.pop(context);
-
                   Navigator.push(
-
                     context,
-
                     MaterialPageRoute(
-
-                      builder: (_) => End2Page( // ⭐ StartPage 건너뛰고 바로 End2Page로
+                      builder: (_) => End2Page(
                         userId: widget.userId,
                         type: "식사",
                         roomTable: widget.roomTable,
                       ),
-
                     ),
-
                   ).then((_) {
-
                     loadRooms();
-
                   });
-
                 },
               ),
-
             ],
-
           ),
-
         );
-
       },
-
     );
-
   }
 
   Future<void> onRoomTap(dynamic room) async {
-
     final pageContext = context;
-
-    // 1️⃣ 먼저 참여 여부만 확인 (INSERT 없음)
     final checkRes = await http.post(
       Uri.parse("${dotenv.env['PHP_URL']}check_room.php"),
       headers: {"Content-Type": "application/json"},
@@ -360,13 +598,9 @@ class _RoomPageState
         "user_id": widget.userId,
       }),
     );
-
     final checkData = jsonDecode(checkRes.body);
-
     if (checkData["success"] != true) {
-
       if (!mounted) return;
-
       _showInfoDialog(
         icon: Icons.error_outline_rounded,
         iconColor: Colors.redAccent,
@@ -377,19 +611,12 @@ class _RoomPageState
           Navigator.pop(context);
           loadRooms();
         },
-
       );
-
       return;
     }
-
     final bool isJoined = checkData["isJoined"] == true;
-
     if (!mounted) return;
-
     if (isJoined) {
-
-      // 2️⃣ 이미 참여중인 경우 - 확인 누르면 그냥 팝업만 닫힘 (이동 X)
       _showInfoDialog(
         icon: Icons.info_outline_rounded,
         iconColor: primary,
@@ -400,22 +627,15 @@ class _RoomPageState
           Navigator.pop(context);
         },
       );
-
       return;
-
     }
-
-    // 3️⃣ 미참여인 경우 - 정원이 이미 가득 찼는지 먼저 확인 (목록에서 받아온 값 기준)
     final int currentPeople = (room["current_people"] ?? 0) is int
         ? room["current_people"]
         : int.tryParse(room["current_people"].toString()) ?? 0;
-
     final int maxPeople = (room["people"] ?? 0) is int
         ? room["people"]
         : int.tryParse(room["people"].toString()) ?? 0;
-
     if (currentPeople >= maxPeople) {
-
       _showInfoDialog(
         icon: Icons.lock_outline_rounded,
         iconColor: Colors.redAccent,
@@ -424,15 +644,11 @@ class _RoomPageState
         confirmText: "확인",
         onConfirm: () => Navigator.pop(context),
       );
-
       return;
-
     }
-
-    // 4️⃣ 정원 여유 있는 경우 - 참여 여부 확인 팝업
     showDialog(
       context: context,
-      useRootNavigator: false, // ⭐ 추가: 현재 홈 탭 Navigator에 다이얼로그를 붙임
+      useRootNavigator: false,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
@@ -444,7 +660,6 @@ class _RoomPageState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               Container(
                 width: 56,
                 height: 56,
@@ -458,9 +673,7 @@ class _RoomPageState
                   size: 28,
                 ),
               ),
-
               const SizedBox(height: 16),
-
               const Text(
                 "채팅방 참여",
                 style: TextStyle(
@@ -469,9 +682,7 @@ class _RoomPageState
                   color: Colors.black87,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               const Text(
                 "채팅방에 참여하시겠습니까?",
                 textAlign: TextAlign.center,
@@ -480,12 +691,9 @@ class _RoomPageState
                   color: Colors.black54,
                 ),
               ),
-
               const SizedBox(height: 24),
-
               Row(
                 children: [
-
                   Expanded(
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
@@ -505,9 +713,7 @@ class _RoomPageState
                       ),
                     ),
                   ),
-
                   const SizedBox(width: 12),
-
                   Expanded(
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -519,9 +725,7 @@ class _RoomPageState
                         ),
                       ),
                       onPressed: () async {
-
                         Navigator.pop(context);
-
                         final joinRes = await http.post(
                           Uri.parse("${dotenv.env['PHP_URL']}join_room.php"),
                           headers: {"Content-Type": "application/json"},
@@ -530,13 +734,9 @@ class _RoomPageState
                             "user_id": widget.userId,
                           }),
                         );
-
                         final joinData = jsonDecode(joinRes.body);
-
                         if (joinData["success"] == true) {
-
                           if (!mounted) return;
-
                           Navigator.push(
                             pageContext,
                             MaterialPageRoute(
@@ -546,12 +746,8 @@ class _RoomPageState
                               ),
                             ),
                           );
-
                         } else if (joinData["full"] == true) {
-
-                          // 서버에서도 정원 초과로 최종 거부된 경우 (동시 참여 등 엣지케이스)
                           if (!mounted) return;
-
                           _showInfoDialog(
                             icon: Icons.lock_outline_rounded,
                             iconColor: Colors.redAccent,
@@ -563,11 +759,8 @@ class _RoomPageState
                               loadRooms();
                             },
                           );
-
                         } else {
-
                           if (!mounted) return;
-
                           _showInfoDialog(
                             icon: Icons.error_outline_rounded,
                             iconColor: Colors.redAccent,
@@ -590,37 +783,26 @@ class _RoomPageState
                       ),
                     ),
                   ),
-
                 ],
               ),
-
             ],
           ),
         ),
       ),
     );
-
   }
 
   void _showInfoDialog({
-
     required IconData icon,
-
     required Color iconColor,
-
     required String title,
-
     required String content,
-
     required String confirmText,
-
     required VoidCallback onConfirm,
-
   }) {
-
     showDialog(
       context: context,
-      useRootNavigator: false, // ⭐ 추가: 현재 홈 탭 Navigator에 다이얼로그를 붙임
+      useRootNavigator: false,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
@@ -632,7 +814,6 @@ class _RoomPageState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               Container(
                 width: 56,
                 height: 56,
@@ -646,9 +827,7 @@ class _RoomPageState
                   size: 28,
                 ),
               ),
-
               const SizedBox(height: 16),
-
               Text(
                 title,
                 style: const TextStyle(
@@ -657,9 +836,7 @@ class _RoomPageState
                   color: Colors.black87,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               Text(
                 content,
                 textAlign: TextAlign.center,
@@ -668,9 +845,7 @@ class _RoomPageState
                   color: Colors.black54,
                 ),
               ),
-
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -692,55 +867,57 @@ class _RoomPageState
                   ),
                 ),
               ),
-
             ],
           ),
         ),
       ),
     );
-
   }
 
   @override
   Widget build(
       BuildContext context
       ){
+    final Color accentColor = selectedType == "식사" ? mealColor : primary;
 
-    final Color accentColor = selectedType == "식사" ? mealColor : primary; // ⭐ 현재 선택된 탭 색상
-
-    // ⭐ 1) type으로 먼저 필터링
     final List<dynamic> typeFiltered = rooms.where((room) {
-
       if (selectedType == "식사") {
         return room["type"] == "식사";
       } else {
         return room["type"] != "식사";
       }
+    }).toList();
+
+    // ⭐ 검색 방식 변경: 자유 텍스트 검색 -> 선택한 장소명 기준 필터로 교체
+    final List<dynamic> filteredRooms = typeFiltered.where((room) {
+
+      if (selectedType == "식사") {
+
+        if (appliedMealFilter.isEmpty) return true;
+
+        return (room["end"] ?? "").toString() == appliedMealFilter;
+
+      } else {
+
+        final bool matchStart = appliedStartFilter.isEmpty
+            || (room["start"] ?? "").toString() == appliedStartFilter;
+
+        final bool matchEnd = appliedEndFilter.isEmpty
+            || (room["end"] ?? "").toString() == appliedEndFilter;
+
+        return matchStart && matchEnd;
+
+      }
 
     }).toList();
 
-    // ⭐ 2) 검색어로 출발지 또는 목적지 필터링
-    final String query = searchQuery.trim();
-
-    final List<dynamic> filteredRooms = query.isEmpty
-        ? typeFiltered
-        : typeFiltered.where((room) {
-
-      final String start = (room["start"] ?? "").toString().toLowerCase();
-      final String end = (room["end"] ?? "").toString().toLowerCase();
-
-      final String q = query.toLowerCase();
-
-      return start.contains(q) || end.contains(q);
-
-    }).toList();
+    final bool hasActiveFilter = selectedType == "식사"
+        ? appliedMealFilter.isNotEmpty
+        : (appliedStartFilter.isNotEmpty || appliedEndFilter.isNotEmpty);
 
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       appBar: AppBar(
-
         title: Text(
           widget.roomTitle,
           style: const TextStyle(
@@ -749,55 +926,34 @@ class _RoomPageState
             fontSize: 18,
           ),
         ),
-
         centerTitle: false,
-
         backgroundColor: const Color(0xFFF7F7F9),
-
         elevation: 0,
-
         surfaceTintColor: Colors.transparent,
-
         iconTheme: const IconThemeData(color: Colors.black87),
-
         actions: [
-
           IconButton(
             onPressed: loadRooms,
             icon: const Icon(Icons.refresh_rounded),
           ),
-
         ],
-
       ),
-
       body:
-
       loading
-
           ?
-
       Center(
         child: CircularProgressIndicator(
           color: primary,
         ),
       )
-
           :
-
       Column(
-
         children: [
-
           // ===== 엔빵/식사 탭 버튼 =====
           Padding(
-
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-
             child: Row(
-
               children: [
-
                 Expanded(
                   child: _TypeTabButton(
                     label: "엔빵",
@@ -805,19 +961,19 @@ class _RoomPageState
                     color: primary,
                     selected: selectedType != "식사",
                     onTap: () {
-
                       setState(() {
                         selectedType = "엔빵";
-                        searchController.clear();
-                        searchQuery = "";
+                        selectedStartName = null;
+                        selectedEndName = null;
+                        appliedStartFilter = "";
+                        appliedEndFilter = "";
+                        selectedMealName = null;
+                        appliedMealFilter = "";
                       });
-
                     },
                   ),
                 ),
-
                 const SizedBox(width: 10),
-
                 Expanded(
                   child: _TypeTabButton(
                     label: "식사",
@@ -825,117 +981,199 @@ class _RoomPageState
                     color: mealColor,
                     selected: selectedType == "식사",
                     onTap: () {
-
                       setState(() {
                         selectedType = "식사";
-                        searchController.clear();
-                        searchQuery = "";
+                        selectedStartName = null;
+                        selectedEndName = null;
+                        appliedStartFilter = "";
+                        appliedEndFilter = "";
+                        selectedMealName = null;
+                        appliedMealFilter = "";
                       });
-
                     },
                   ),
                 ),
-
               ],
-
             ),
-
           ),
 
           const SizedBox(height: 12),
 
-          // ===== 검색창 =====
+          // ===== 검색 영역 =====
           Padding(
 
             padding: const EdgeInsets.symmetric(horizontal: 16),
 
-            child: Container(
+            child: selectedType == "식사"
 
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
+            // ⭐ 식사: 검색창 1개 + 검색 버튼
+                ? Row(
+              children: [
 
-              child: TextField(
-
-                controller: searchController,
-
-                onChanged: (value) {
-
-                  setState(() {
-                    searchQuery = value;
-                  });
-
-                },
-
-                decoration: InputDecoration(
-
-                  hintText: selectedType == "식사"
-                      ? "식사 장소로 검색 (출발지/목적지)"
-                      : "출발지 또는 목적지로 검색",
-
-                  hintStyle: TextStyle(
-                    color: Colors.grey.shade400,
-                    fontSize: 13,
-                  ),
-
-                  prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 20),
-
-                  suffixIcon: searchQuery.isEmpty
-                      ? null
-                      : IconButton(
-                    icon: Icon(Icons.close_rounded, color: Colors.grey.shade400, size: 18),
-                    onPressed: () {
-
+                Expanded(
+                  child: _SpotSearchField(
+                    hintText: "식사 장소로 검색",
+                    selectedName: selectedMealName,
+                    color: mealColor,
+                    onTap: () => _showMealSpotPicker(
+                      onSelected: (name) {
+                        setState(() {
+                          selectedMealName = name;
+                        });
+                      },
+                    ),
+                    onClear: () {
                       setState(() {
-                        searchController.clear();
-                        searchQuery = "";
+                        selectedMealName = null;
                       });
-
                     },
                   ),
-
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-
                 ),
 
-              ),
+                const SizedBox(width: 8),
 
+                _SearchApplyButton(
+                  color: mealColor,
+                  onTap: () {
+                    setState(() {
+                      appliedMealFilter = selectedMealName ?? "";
+                    });
+                  },
+                ),
+
+              ],
+            )
+
+            // ⭐ 엔빵: 출발지/목적지 검색창 2개 + 검색 버튼
+                : Row(
+              children: [
+
+                Expanded(
+                  child: _SpotSearchField(
+                    hintText: "출발지 검색",
+                    selectedName: selectedStartName,
+                    color: primary,
+                    onTap: () => _showSpotPickerWithTabs(
+                      isStart: true,
+                      onSelected: (name) {
+                        setState(() {
+                          selectedStartName = name;
+                        });
+                      },
+                    ),
+                    onClear: () {
+                      setState(() {
+                        selectedStartName = null;
+                      });
+                    },
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                Expanded(
+                  child: _SpotSearchField(
+                    hintText: "목적지 검색",
+                    selectedName: selectedEndName,
+                    color: primary,
+                    onTap: () => _showSpotPickerWithTabs(
+                      isStart: false,
+                      onSelected: (name) {
+                        setState(() {
+                          selectedEndName = name;
+                        });
+                      },
+                    ),
+                    onClear: () {
+                      setState(() {
+                        selectedEndName = null;
+                      });
+                    },
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                _SearchApplyButton(
+                  color: primary,
+                  onTap: () {
+                    setState(() {
+                      appliedStartFilter = selectedStartName ?? "";
+                      appliedEndFilter = selectedEndName ?? "";
+                    });
+                  },
+                ),
+
+              ],
             ),
 
           ),
+
+          if (hasActiveFilter) ...[
+
+            const SizedBox(height: 8),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+
+                  Icon(Icons.filter_alt_rounded, size: 14, color: accentColor),
+
+                  const SizedBox(width: 4),
+
+                  Text(
+                    "필터 적용중",
+                    style: TextStyle(fontSize: 12, color: accentColor, fontWeight: FontWeight.w600),
+                  ),
+
+                  const Spacer(),
+
+                  GestureDetector(
+
+                    onTap: () {
+
+                      setState(() {
+                        selectedStartName = null;
+                        selectedEndName = null;
+                        appliedStartFilter = "";
+                        appliedEndFilter = "";
+                        selectedMealName = null;
+                        appliedMealFilter = "";
+                      });
+
+                    },
+
+                    child: Text(
+                      "필터 초기화",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
+                    ),
+
+                  ),
+
+                ],
+              ),
+            ),
+
+          ],
 
           const SizedBox(height: 8),
 
           // ===== 방 목록 =====
           Expanded(
-
             child: filteredRooms.isEmpty
-
                 ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    query.isEmpty ? Icons.map_outlined : Icons.search_off_rounded,
+                    !hasActiveFilter ? Icons.map_outlined : Icons.search_off_rounded,
                     size: 56,
                     color: Colors.grey.shade300,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    query.isEmpty
+                    !hasActiveFilter
                         ? "아직 채팅방이 없어요"
                         : "검색 결과가 없어요",
                     style: TextStyle(
@@ -947,59 +1185,38 @@ class _RoomPageState
                 ],
               ),
             )
-
                 : GridView.builder(
-
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-
               itemCount: filteredRooms.length,
-
               gridDelegate:
               const SliverGridDelegateWithFixedCrossAxisCount(
-
                 crossAxisCount:
                 2,
-
                 mainAxisSpacing:
                 14,
-
                 crossAxisSpacing:
                 14,
-
                 childAspectRatio:
                 0.95,
-
               ),
-
               itemBuilder:
                   (
                   context,
                   index
                   ){
-
                 final room = filteredRooms[index];
-
                 return _buildRoomCard(room, accentColor);
-
               },
-
             ),
-
           ),
-
         ],
-
       ),
       bottomNavigationBar:
-
       BottomWidget(
         userId: widget.userId,
       ),
-
       floatingActionButton:
-
       Container(
-
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
@@ -1010,69 +1227,46 @@ class _RoomPageState
             ),
           ],
         ),
-
         child: FloatingActionButton(
-
           onPressed:
           showMenuPopup,
-
           backgroundColor:
           primary,
-
           elevation: 0,
-
           child:
           const Icon(
             Icons.add_rounded,
             size: 28,
           ),
-
         ),
-
       ),
-
     );
-
   }
 
-  // ⭐ 카드 위젯을 색상 파라미터를 받는 함수로 분리 (엔빵=primary, 식사=mealColor)
   Widget _buildRoomCard(dynamic room, Color accentColor) {
-
     final isMine =
         room["user_id"]
             .toString()
             ==
             widget.userId.toString();
-
     final isJoined =
     joinedRoomIds.contains(room["id"].toString());
-
     final int currentPeople = (room["current_people"] ?? 0) is int
         ? room["current_people"]
         : int.tryParse(room["current_people"].toString()) ?? 0;
-
     final int maxPeople = (room["people"] ?? 0) is int
         ? room["people"]
         : int.tryParse(room["people"].toString()) ?? 0;
-
     final bool isFull = currentPeople >= maxPeople;
-
     return GestureDetector(
-
       onTap: () => onRoomTap(room),
-
       child: Container(
-
         decoration: BoxDecoration(
-
           color: Colors.white,
-
           borderRadius: BorderRadius.circular(20),
-
           border: isJoined
               ? Border.all(color: accentColor.withOpacity(0.5), width: 1.4)
               : Border.all(color: Colors.transparent),
-
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -1080,29 +1274,18 @@ class _RoomPageState
               offset: const Offset(0, 4),
             ),
           ],
-
         ),
-
         child: Stack(
-
           children: [
-
             Padding(
-
               padding: const EdgeInsets.all(16),
-
               child: Column(
-
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
-
                   Row(
                     children: [
                       if (isMine) ...[
-
                         const SizedBox(width: 6),
-
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
@@ -1110,35 +1293,22 @@ class _RoomPageState
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-
                             "방장",
-
                             style: TextStyle(
-
                               fontSize: 11,
-
                               color: accentColor,
-
                               fontWeight: FontWeight.w700,
-
                             ),
-
                           ),
                         ),
-
                       ],
-
                     ],
                   ),
-
                   const Spacer(),
-
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       if (room["start"] != null) ...[
-
                         Text(
                           "${room["start"]}",
                           maxLines: 1,
@@ -1149,7 +1319,6 @@ class _RoomPageState
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 2),
                           child: Icon(
@@ -1158,9 +1327,7 @@ class _RoomPageState
                             color: Colors.black26,
                           ),
                         ),
-
                       ],
-
                       Text(
                         "${room["end"]}",
                         maxLines: 1,
@@ -1171,18 +1338,12 @@ class _RoomPageState
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-
                     ],
                   ),
-
                   const Spacer(),
-
                   Row(
-
                     children: [
-
                       Expanded(
-
                         child: Row(
                           children: [
                             Icon(
@@ -1211,9 +1372,7 @@ class _RoomPageState
                             ),
                           ],
                         ),
-
                       ),
-
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -1245,27 +1404,17 @@ class _RoomPageState
                           ],
                         ),
                       ),
-
                     ],
-
                   ),
-
                 ],
-
               ),
-
             ),
-
             if (isFull)
               Positioned(
-
                 top: 0,
                 right: 0,
-
                 child: Container(
-
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-
                   decoration: const BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.only(
@@ -1273,75 +1422,44 @@ class _RoomPageState
                       bottomLeft: Radius.circular(14),
                     ),
                   ),
-
                   child: const Text(
-
                     "마감",
-
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
-
                   ),
-
                 ),
-
               ),
-
           ],
-
         ),
-
       ),
-
     );
-
   }
-
 }
 
 // ⭐ 엔빵/식사 탭 버튼 위젯
 class _TypeTabButton extends StatelessWidget {
-
   final String label;
-
   final IconData icon;
-
   final Color color;
-
   final bool selected;
-
   final VoidCallback onTap;
-
   const _TypeTabButton({
-
     required this.label,
-
     required this.icon,
-
     required this.color,
-
     required this.selected,
-
     required this.onTap,
-
   });
-
   @override
   Widget build(BuildContext context) {
-
     return GestureDetector(
-
       onTap: onTap,
-
       child: AnimatedContainer(
-
         duration: const Duration(milliseconds: 200),
-
         padding: const EdgeInsets.symmetric(vertical: 12),
-
         decoration: BoxDecoration(
           color: selected ? color : Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -1359,19 +1477,15 @@ class _TypeTabButton extends StatelessWidget {
           ]
               : [],
         ),
-
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-
             Icon(
               icon,
               size: 18,
               color: selected ? Colors.white : Colors.grey.shade500,
             ),
-
             const SizedBox(width: 6),
-
             Text(
               label,
               style: TextStyle(
@@ -1380,6 +1494,91 @@ class _TypeTabButton extends StatelessWidget {
                 color: selected ? Colors.white : Colors.grey.shade500,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ⭐ 출발지/목적지/식사 검색 필드 (누르면 선택 팝업이 뜨는 형태)
+class _SpotSearchField extends StatelessWidget {
+
+  final String hintText;
+
+  final String? selectedName;
+
+  final Color color;
+
+  final VoidCallback onTap;
+
+  final VoidCallback onClear;
+
+  const _SpotSearchField({
+    required this.hintText,
+    required this.selectedName,
+    required this.color,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    final bool hasSelection = selectedName != null && selectedName!.isNotEmpty;
+
+    return GestureDetector(
+
+      onTap: onTap,
+
+      child: Container(
+
+        height: 46,
+
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasSelection ? color.withOpacity(0.5) : Colors.transparent,
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+
+        child: Row(
+          children: [
+
+            Icon(Icons.search_rounded, size: 18, color: hasSelection ? color : Colors.grey.shade400),
+
+            const SizedBox(width: 6),
+
+            Expanded(
+              child: Text(
+                hasSelection ? selectedName! : hintText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: hasSelection ? FontWeight.w700 : FontWeight.w500,
+                  color: hasSelection ? Colors.black87 : Colors.grey.shade400,
+                ),
+              ),
+            ),
+
+            if (hasSelection)
+
+              GestureDetector(
+                onTap: onClear,
+                child: Icon(Icons.close_rounded, size: 16, color: Colors.grey.shade400),
+              ),
 
           ],
         ),
@@ -1391,54 +1590,134 @@ class _TypeTabButton extends StatelessWidget {
   }
 
 }
-
-class _MenuTile extends StatelessWidget {
-
-  final IconData icon;
+class _PickerTabButton extends StatelessWidget {
 
   final String label;
 
-  final String subtitle;
+  final bool selected;
 
   final Color color;
 
   final VoidCallback onTap;
 
-  const _MenuTile({
-
-    required this.icon,
-
+  const _PickerTabButton({
     required this.label,
-
-    required this.subtitle,
-
+    required this.selected,
     required this.color,
-
     required this.onTap,
-
   });
 
   @override
   Widget build(BuildContext context) {
 
-    return InkWell(
+    return GestureDetector(
 
-      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+
+      child: AnimatedContainer(
+
+        duration: const Duration(milliseconds: 150),
+
+        padding: const EdgeInsets.symmetric(vertical: 10),
+
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? color : Colors.grey.shade200, width: 1.2),
+        ),
+
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : Colors.grey.shade500,
+            ),
+          ),
+        ),
+
+      ),
+
+    );
+
+  }
+
+}
+
+// ⭐ 검색 적용 버튼
+class _SearchApplyButton extends StatelessWidget {
+
+  final Color color;
+
+  final VoidCallback onTap;
+
+  const _SearchApplyButton({
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+
+    return GestureDetector(
 
       onTap: onTap,
 
       child: Container(
 
-        padding: const EdgeInsets.all(16),
+        width: 46,
 
+        height: 46,
+
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+
+        child: const Icon(Icons.search_rounded, color: Colors.white, size: 20),
+
+      ),
+
+    );
+
+  }
+
+}
+
+class _MenuTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+  const _MenuTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFFF7F7F9),
           borderRadius: BorderRadius.circular(18),
         ),
-
         child: Row(
           children: [
-
             Container(
               width: 44,
               height: 44,
@@ -1448,14 +1727,11 @@ class _MenuTile extends StatelessWidget {
               ),
               child: Icon(icon, color: color, size: 22),
             ),
-
             const SizedBox(width: 14),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
                   Text(
                     label,
                     style: const TextStyle(
@@ -1464,9 +1740,7 @@ class _MenuTile extends StatelessWidget {
                       color: Colors.black87,
                     ),
                   ),
-
                   const SizedBox(height: 2),
-
                   Text(
                     subtitle,
                     style: TextStyle(
@@ -1474,23 +1748,16 @@ class _MenuTile extends StatelessWidget {
                       color: Colors.grey.shade500,
                     ),
                   ),
-
                 ],
               ),
             ),
-
             Icon(
               Icons.chevron_right_rounded,
               color: Colors.grey.shade400,
             ),
-
           ],
         ),
-
       ),
-
     );
-
   }
-
 }

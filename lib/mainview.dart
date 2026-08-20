@@ -443,7 +443,13 @@ class _IntroPageState extends State<IntroPage> {
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(dialogContext);
-                        Navigator.push(pageContext, MaterialPageRoute(builder: (context) => RoomPage(userId: widget.userId, roomTable: region.id, roomTitle: region.name)));
+                        Navigator.push(
+                          pageContext,
+                          MaterialPageRoute(
+                            settings: const RouteSettings(name: 'room'), // ⭐ 이름표 추가
+                            builder: (context) => RoomPage(userId: widget.userId, roomTable: region.id, roomTitle: region.name),
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                       child: const Text('채팅방 입장', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),

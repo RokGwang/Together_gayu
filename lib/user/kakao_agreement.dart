@@ -3,50 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../tab_widget/main_shell.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ⭐ 추가
 
 class KakaoAgreementPage extends StatefulWidget {
-
   final String kakaoId;
   final String name;
-
   const KakaoAgreementPage({
     super.key,
     required this.kakaoId,
     required this.name,
   });
-
   @override
   State<KakaoAgreementPage> createState() => _KakaoAgreementPageState();
 }
 
 class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
-
   static const Color primary = Color(0xFFFF7A00);
-
   bool termsAgreed = false;
   bool privacyAgreed = false;
   bool marketingAgreed = false;
-
   bool isLoading = false;
-
   final String serverUrl = "${dotenv.env['PHP_URL']}kakao_signup.php";
-
   bool get allRequiredAgreed => termsAgreed && privacyAgreed;
-
   bool get allAgreed => termsAgreed && privacyAgreed && marketingAgreed;
 
   void toggleAll(bool value) {
-
     setState(() {
       termsAgreed = value;
       privacyAgreed = value;
       marketingAgreed = value;
     });
-
   }
 
   void showTermsDialog(String title, String content) {
-
     showDialog(
       context: context,
       useRootNavigator: false,
@@ -92,25 +81,17 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
         ),
       ),
     );
-
   }
 
   Future<void> confirmAndSignup() async {
-
     if (!allRequiredAgreed) {
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("필수 약관에 동의해주세요")),
       );
-
       return;
-
     }
-
     setState(() => isLoading = true);
-
     try {
-
       final response = await http.post(
         Uri.parse(serverUrl),
         headers: {"Content-Type": "application/json"},
@@ -122,15 +103,16 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
           "marketing_agreed": marketingAgreed,
         }),
       );
-
       final data = jsonDecode(response.body);
-
       if (!mounted) return;
-
       if (data["success"] == true) {
-
         final int userId = int.parse(data["user_id"].toString());
 
+        // ⭐ 추가: 로그인 정보 로컬 저장
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('user_id', userId);
+
+        if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
@@ -138,40 +120,26 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
           ),
               (route) => false,
         );
-
       } else {
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data["message"] ?? "가입에 실패했습니다")),
         );
-
       }
-
     } catch (e) {
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("에러 발생: $e")),
       );
-
     } finally {
-
       if (!mounted) return;
-
       setState(() => isLoading = false);
-
     }
-
   }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: const Text(
@@ -187,19 +155,12 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-
       body: SafeArea(
-
         child: SingleChildScrollView(
-
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-
           child: Column(
-
             crossAxisAlignment: CrossAxisAlignment.center,
-
             children: [
-
               Container(
                 width: 72,
                 height: 72,
@@ -209,29 +170,20 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                 ),
                 child: const Icon(Icons.chat_bubble_rounded, color: Colors.black87, size: 32),
               ),
-
               const SizedBox(height: 16),
-
               Text(
                 '${widget.name}님, 환영합니다!',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87),
               ),
-
               const SizedBox(height: 6),
-
               Text(
                 '서비스 이용을 위해 약관에 동의해주세요',
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
               ),
-
               const SizedBox(height: 28),
-
               Container(
-
                 width: double.infinity,
-
                 padding: const EdgeInsets.all(20),
-
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
@@ -243,10 +195,8 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                     ),
                   ],
                 ),
-
                 child: Column(
                   children: [
-
                     InkWell(
                       onTap: () => toggleAll(!allAgreed),
                       borderRadius: BorderRadius.circular(10),
@@ -268,9 +218,7 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                         ),
                       ),
                     ),
-
                     const Divider(height: 20),
-
                     _AgreementRow(
                       label: '[필수] 이용약관 동의',
                       value: termsAgreed,
@@ -281,9 +229,7 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                         '충남 엔빵이 서비스 이용약관 내용이 여기에 표시됩니다.\n\n실제 서비스 출시 전 정식 약관 문구로 교체해주세요.',
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     _AgreementRow(
                       label: '[필수] 개인정보 수집·이용 동의',
                       value: privacyAgreed,
@@ -297,9 +243,7 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                             '실제 서비스 출시 전 정식 개인정보처리방침으로 교체해주세요.',
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     _AgreementRow(
                       label: '[선택] 마케팅 정보 수신 동의',
                       value: marketingAgreed,
@@ -311,9 +255,7 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                             '동의하지 않아도 서비스 이용에는 제한이 없습니다.',
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -336,12 +278,9 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
                         ),
                       ),
                     ),
-
                   ],
                 ),
-
               ),
-
             ],
           ),
         ),
@@ -351,13 +290,11 @@ class _KakaoAgreementPageState extends State<KakaoAgreementPage> {
 }
 
 class _AgreementRow extends StatelessWidget {
-
   final String label;
   final bool value;
   final Color color;
   final ValueChanged<bool> onChanged;
   final VoidCallback onView;
-
   const _AgreementRow({
     required this.label,
     required this.value,
@@ -365,13 +302,10 @@ class _AgreementRow extends StatelessWidget {
     required this.onChanged,
     required this.onView,
   });
-
   @override
   Widget build(BuildContext context) {
-
     return Row(
       children: [
-
         Expanded(
           child: InkWell(
             onTap: () => onChanged(!value),
@@ -394,7 +328,6 @@ class _AgreementRow extends StatelessWidget {
             ),
           ),
         ),
-
         TextButton(
           onPressed: onView,
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
@@ -403,10 +336,7 @@ class _AgreementRow extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: Colors.grey.shade400, decoration: TextDecoration.underline),
           ),
         ),
-
       ],
     );
-
   }
-
 }

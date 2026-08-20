@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'login.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../tab_widget/tab_controller.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WithdrawPage extends StatefulWidget {
 
@@ -154,6 +155,10 @@ class _WithdrawPageState extends State<WithdrawPage> {
       if (!mounted) return;
 
       if (data["success"] == true) {
+
+        // ⭐ 추가
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('user_id');
 
         AppTabController.reset(); // ⭐ 탭 상태 초기화 (import 필요: '../tab_widget/tab_controller.dart')
 

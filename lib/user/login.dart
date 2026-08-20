@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'package:shared_preferences/shared_preferences.dart'; // ⭐ 추가
 // 원본과 동일하게 유지 (경로가 다르다면 ../user/signup.dart 등으로 수정 필요)
 import 'signup.dart';
 import '../tab_widget/main_shell.dart';
@@ -11,21 +11,17 @@ import 'kakao_agreement.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
-
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
   static const Color primary = Color(0xFFFF7A00);
-
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-
   bool obscurePassword = true;
   bool isLoading = false;
   bool isKakaoLoading = false;
-
   final String serverUrl = "${dotenv.env['PHP_URL']}login.php";
   final String kakaoServerUrl = "${dotenv.env['PHP_URL']}kakao_login.php";
 
@@ -36,9 +32,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       return;
     }
-
     setState(() => isLoading = true);
-
     try {
       final response = await http.post(
         Uri.parse(serverUrl),
@@ -48,13 +42,16 @@ class _LoginPageState extends State<LoginPage> {
           "password": passwordController.text.trim(),
         }),
       );
-
       final data = jsonDecode(response.body);
-
       if (!mounted) return;
-
       if (data["success"] == true) {
         final int userId = int.parse(data["user_id"].toString());
+
+        // ⭐ 추가: 로그인 정보 로컬 저장
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('user_id', userId);
+
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -84,28 +81,22 @@ class _LoginPageState extends State<LoginPage> {
       OAuthToken token = talkInstalled
           ? await UserApi.instance.loginWithKakaoTalk()
           : await UserApi.instance.loginWithKakaoAccount();
-
       final User kakaoUser = await UserApi.instance.me();
       final String kakaoId = kakaoUser.id.toString();
       final String nickname = kakaoUser.kakaoAccount?.profile?.nickname ?? "카카오사용자";
-
       final response = await http.post(
         Uri.parse(kakaoServerUrl),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"kakao_id": kakaoId}),
       );
-
       final data = jsonDecode(response.body);
-
       if (!mounted) return;
-
       if (data["success"] != true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data["message"] ?? "카카오 로그인에 실패했습니다")),
         );
         return;
       }
-
       if (data["needsSignup"] == true) {
         Navigator.push(
           context,
@@ -118,6 +109,12 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         final int userId = int.parse(data["user_id"].toString());
+
+        // ⭐ 추가: 로그인 정보 로컬 저장
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('user_id', userId);
+
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -138,25 +135,15 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       body: SafeArea(
-
         child: Center(
-
           child: SingleChildScrollView(
-
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-
             child: Column(
-
               crossAxisAlignment: CrossAxisAlignment.center,
-
               children: [
-
                 Container(
                   width: 84,
                   height: 84,
@@ -170,9 +157,7 @@ class _LoginPageState extends State<LoginPage> {
                     color: primary,
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
                 const Text(
                   '같이가유',
                   style: TextStyle(
@@ -181,9 +166,7 @@ class _LoginPageState extends State<LoginPage> {
                     color: Colors.black87,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
                 Text(
                   '충청남도를 여행하며\n목적지가 같은 사람들과 함께 이동하고 소통해보세요',
                   textAlign: TextAlign.center,
@@ -194,13 +177,9 @@ class _LoginPageState extends State<LoginPage> {
                     height: 1.4,
                   ),
                 ),
-
                 const SizedBox(height: 36),
-
                 Container(
-
                   padding: const EdgeInsets.all(20),
-
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(22),
@@ -212,10 +191,8 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-
                   child: Column(
                     children: [
-
                       TextField(
                         controller: emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -232,9 +209,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
                       TextField(
                         controller: passwordController,
                         obscureText: obscurePassword,
@@ -263,9 +238,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 20),
-
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -297,9 +270,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 20),
-
                       Row(
                         children: [
                           Expanded(child: Divider(color: Colors.grey.shade200)),
@@ -313,9 +284,7 @@ class _LoginPageState extends State<LoginPage> {
                           Expanded(child: Divider(color: Colors.grey.shade200)),
                         ],
                       ),
-
                       const SizedBox(height: 20),
-
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -352,26 +321,19 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                     ],
                   ),
-
                 ),
-
                 const SizedBox(height: 24),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-
                     Text(
                       '계정이 없으신가요?',
                       style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                     ),
-
                     TextButton(
                       onPressed: () {
-
                         Navigator.push(
                           context,
                           MaterialPageRoute(

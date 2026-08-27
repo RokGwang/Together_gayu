@@ -212,69 +212,98 @@ class _IntroPageState extends State<IntroPage> {
           onTap: () => Navigator.pop(context),
           child: Container(
             color: Colors.black.withOpacity(0.6),
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InteractiveViewer(
-                      clipBehavior: Clip.none,
-                      child: Image.network(
-                        proxyUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      width: double.infinity,
-                      child: Row(
+            child: Stack( // ⭐ Center를 Stack으로 감싸서 닫기 버튼 배치 공간 확보
+              children: [
+
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+                    child: GestureDetector(
+                      onTap: () {}, // ⭐ 내부 탭은 닫힘 방지 (닫기 버튼 오작동 방지용으로 추가)
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          InteractiveViewer(
+                            clipBehavior: Clip.none,
+                            child: Image.network(
+                              proxyUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            width: double.infinity,
+                            child: Row(
                               children: [
-                                Text(
-                                  photo['galTitle'] ?? '제목 없음',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        photo['galTitle'] ?? '제목 없음',
+                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
+                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
-                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                Column(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                      onPressed: () { /* GPS 동작 */ },
+                                      padding: EdgeInsets.zero,
+                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    IconButton(
+                                      icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                                      onPressed: () { /* 검색 동작 */ },
+                                      padding: EdgeInsets.zero,
+                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                          Column(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
-                                onPressed: () { /* GPS 동작 */ },
-                                padding: EdgeInsets.zero,
-                                style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
-                              ),
-                              const SizedBox(height: 10),
-                              IconButton(
-                                icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                                onPressed: () { /* 검색 동작 */ },
-                                padding: EdgeInsets.zero,
-                                style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+
+                // ⭐ 닫기 버튼
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: SafeArea(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                ),
+
+              ],
             ),
           ),
         ),

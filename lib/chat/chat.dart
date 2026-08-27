@@ -470,6 +470,83 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
+  // ⭐ 추가: 계좌 미등록 안내 팝업
+  Future<void> _showAccountRequiredDialog() async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.account_balance_rounded,
+                  color: Colors.redAccent,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "계좌정보가 없어요",
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "회원 페이지에서 계좌정보를 업데이트해주세요",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    "확인",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void scrollToBottom() {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1023,77 +1100,53 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> sendSettlement() async {
-
     if (roomInfo == null || isSettling) return;
-
     final amount = int.tryParse(amountController.text.trim());
-
     if (amount == null || amount <= 0) {
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("올바른 금액을 입력해주세요")),
       );
-
       return;
-
     }
-
     setState(() {
       isSettling = true;
     });
-
     try {
-
       final response = await http.post(
-
-        Uri.parse("${dotenv.env['PHP_URL']}send_settlement.php"),
-
+        Uri.parse("${dotenv.env['PHP_URL']}send_settlement2.php"),
         headers: {"Content-Type": "application/json"},
-
         body: jsonEncode({
           "room_id": widget.roomId,
           "amount": amount,
-          "people": settlementPeopleCount, // ⭐ 사용자가 조정한 인원수 사용
+          "people": settlementPeopleCount,
+          "user_id": widget.userId, // ⭐ 추가: 요청자 계좌번호 조회용
         }),
-
       );
-
       final data = jsonDecode(response.body);
-
       if (data["success"] == true) {
-
         await loadMessages(initial: false);
-
-      } else {
-
+      } else if (data["need_account"] == true) {
+        // ⭐ 추가: 계좌 미등록 안내 팝업
         if (!mounted) return;
-
+        await _showAccountRequiredDialog();
+      } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("정산 요청에 실패했습니다")),
         );
-
       }
-
     } catch (e) {
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("에러 : $e")),
       );
-
     } finally {
-
       if (!mounted) return;
-
       setState(() {
         isSettling = false;
       });
-
     }
-
   }
 
   // =========================
@@ -2298,12 +2351,11 @@ class _ChatPageState extends State<ChatPage> {
 
                   // ===== 정산 메시지 (전용 카드) =====
                   if (isSettlement) {
-
                     final parts = (msg["message"] as String).split("|");
-
                     final amount = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
                     final people = int.tryParse(parts.length > 2 ? parts[2] : "1") ?? 1;
                     final perPerson = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
+                    final accountNumber = parts.length > 4 ? parts[4] : ""; // ⭐ 추가
 
                     return Column(
                       children: [
@@ -2456,6 +2508,30 @@ class _ChatPageState extends State<ChatPage> {
                                     ],
                                   ),
                                 ),
+
+                                if (accountNumber.isNotEmpty) ...[ // ⭐ 추가
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF7F7F9),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.account_balance_rounded, size: 14, color: Colors.grey.shade600),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            accountNumber,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black87),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
 
                                 const SizedBox(height: 12),
 

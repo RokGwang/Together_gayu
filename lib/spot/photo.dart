@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../map_view.dart';
 
 class PhotoPage extends StatefulWidget {
@@ -18,57 +21,103 @@ class PhotoPage extends StatefulWidget {
 
 class _PhotoPageState extends State<PhotoPage> {
   static const Color primary = Color(0xFFFF7A00);
+
   late Future<List<dynamic>> _photoFuture;
   late PageController _pageController;
   int _currentPage = 0;
+
+  final TextEditingController _searchController = TextEditingController();
+
+  String _searchQuery = "";
+
+  bool _favoritesOnly = false;
+
+  Set<String> _favoriteIds = {};
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     _photoFuture = fetchFilteredPhotos();
+    _loadFavorites();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  // ⭐ 로딩 다이얼로그(showDialog) 완전 제거 -> pop 후 fetch, 그 다음 push 한 번만.
-  // spot2.dart의 "미리보기 탭 -> 바로 push"와 동일한 구조.
-  Future<void> _goToMap(String title) async {
+  // =========================
+  // 즐겨찾기 (기기 로컬 저장 - 지역별로 구분)
+  // =========================
 
+  String get _favoriteStorageKey => 'photo_favorites_${widget.regionName}';
+
+  Future<void> _loadFavorites() async {
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final saved = prefs.getStringList(_favoriteStorageKey) ?? [];
+
+    if (!mounted) return;
+
+    setState(() {
+      _favoriteIds = saved.toSet();
+    });
+
+  }
+
+  Future<void> _persistFavorites() async {
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setStringList(_favoriteStorageKey, _favoriteIds.toList());
+
+  }
+
+  void _toggleFavorite(String contentId) {
+
+    setState(() {
+
+      if (_favoriteIds.contains(contentId)) {
+        _favoriteIds.remove(contentId);
+      } else {
+        _favoriteIds.add(contentId);
+      }
+
+    });
+
+    _persistFavorites();
+
+  }
+
+  // =========================
+  // 위치 찾기 (기존 그대로)
+  // =========================
+
+  Future<void> _goToMap(String title) async {
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("장소명 정보가 없습니다")),
       );
       return;
     }
-
-    // 로딩 안내는 스낵바로만 (네비게이터 스택을 건드리지 않음)
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text("위치를 찾는 중이에요..."),
         duration: Duration(seconds: 2),
       ),
     );
-
     try {
-
       final url = '${dotenv.env['PHP_URL']}photo.php'
           '?title=${Uri.encodeComponent(title)}'
           '&regionname=${Uri.encodeComponent(widget.regionName)}';
-
       final response = await http.get(Uri.parse(url));
-
       final data = jsonDecode(response.body);
-
       if (!mounted) return;
-
       if (data["success"] == true) {
-
-        // ⭐ 여기서 pop 없이, 순수 push 한 번만 실행 (spot2.dart와 동일)
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -79,26 +128,50 @@ class _PhotoPageState extends State<PhotoPage> {
             ),
           ),
         );
-
       } else {
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(data["message"] ?? "위치를 찾을 수 없습니다")),
         );
-
       }
-
     } catch (e) {
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("에러 발생: $e")),
       );
+    }
+  }
 
+  // =========================
+  // 공유 / 웹 검색
+  // =========================
+
+  Future<void> _sharePhoto(Map<String, dynamic> photo) async {
+
+    final String title = (photo['galTitle'] ?? '사진').toString();
+
+    final String url = (photo['galWebImageUrl'] ?? '').toString();
+
+    await Share.share('$title\n$url', subject: title);
+
+  }
+
+  Future<void> _searchOnWeb(String title) async {
+
+    if (title.isEmpty) return;
+
+    final query = Uri.encodeComponent('${widget.regionName} $title');
+
+    final uri = Uri.parse('https://www.google.com/search?q=$query');
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
 
   }
+
+  // =========================
+  // 데이터 조회
+  // =========================
 
   Future<List<dynamic>> fetchFilteredPhotos() async {
     try {
@@ -120,115 +193,120 @@ class _PhotoPageState extends State<PhotoPage> {
     return [];
   }
 
+  // =========================
+  // 스와이프 가능한 풀스크린 뷰어
+  // =========================
+
   void _showFullImage(Map<String, dynamic> photo) {
     final String originalUrl = photo['galWebImageUrl'] ?? '';
     final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
-    final String title = (photo['galTitle'] ?? '').toString().trim();
 
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
       builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
           child: Container(
-            color: Colors.black.withOpacity(0.65),
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-                child: GestureDetector(
-                  onTap: () {}, // 내부 탭은 닫힘 방지
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: InteractiveViewer(
-                          clipBehavior: Clip.none,
-                          child: CachedNetworkImage(
-                            imageUrl: proxyUrl,
-                            fit: BoxFit.contain,
-                            placeholder: (context, url) => const SizedBox(
-                              height: 200,
-                              child: Center(
-                                child: CircularProgressIndicator(color: Colors.white),
-                              ),
-                            ),
-                            errorWidget: (context, url, error) => const SizedBox(
-                              height: 200,
-                              child: Icon(Icons.broken_image_rounded, color: Colors.white, size: 40),
+            color: Colors.black.withOpacity(0.6),
+            child: Stack( // ⭐ Center를 Stack으로 감싸서 닫기 버튼 배치 공간 확보
+              children: [
+
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+                    child: GestureDetector(
+                      onTap: () {}, // ⭐ 내부 탭은 닫힘 방지 (닫기 버튼 오작동 방지용으로 추가)
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InteractiveViewer(
+                            clipBehavior: Clip.none,
+                            child: Image.network(
+                              proxyUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 15),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            width: double.infinity,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        photo['galTitle'] ?? '제목 없음',
+                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
+                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        "ID: ${photo['galContentId'] ?? '정보 없음'}",
+                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                      onPressed: () { /* GPS 동작 */ },
+                                      padding: EdgeInsets.zero,
+                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    IconButton(
+                                      icon: const Icon(Icons.search, color: Colors.white, size: 24),
+                                      onPressed: () { /* 검색 동작 */ },
+                                      padding: EdgeInsets.zero,
+                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white.withOpacity(0.15)),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    photo['galTitle'] ?? '제목 없음',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    "id · ${photo['galContentId'] ?? '정보 없음'}",
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    "작가 · ${photo['galPhotographer'] ?? '정보 없음'}",
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            _blurIconButton(
-                              icon: Icons.location_on_rounded,
-                              onTap: () {
-                                // ⭐ 팝업만 닫고, 곧바로 fetch -> push (그 사이에 다른 다이얼로그 없음)
-                                Navigator.pop(context);
-                                _goToMap(title);
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            _blurIconButton(
-                              icon: Icons.search_rounded,
-                              onTap: () {},
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+
+                // ⭐ 닫기 버튼
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: SafeArea(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                ),
+
+              ],
             ),
           ),
         ),
@@ -249,6 +327,45 @@ class _PhotoPageState extends State<PhotoPage> {
         child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
+  }
+
+  Widget _actionChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+
+    return InkWell(
+
+      onTap: onTap,
+
+      borderRadius: BorderRadius.circular(12),
+
+      child: Container(
+
+        padding: const EdgeInsets.symmetric(vertical: 10),
+
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+
+      ),
+
+    );
+
   }
 
   @override
@@ -291,12 +408,167 @@ class _PhotoPageState extends State<PhotoPage> {
               ),
             );
           }
-          final photos = snapshot.data!;
+
+          final allPhotos = snapshot.data!;
+
+          // ⭐ 검색어 + 즐겨찾기 필터 적용
+          final List<dynamic> photos = allPhotos.where((p) {
+
+            final String contentId = (p['galContentId'] ?? '').toString();
+
+            if (_favoritesOnly && !_favoriteIds.contains(contentId)) return false;
+
+            if (_searchQuery.isNotEmpty) {
+
+              final String title = (p['galTitle'] ?? '').toString().toLowerCase();
+              final String keyword = (p['galSearchKeyword'] ?? '').toString().toLowerCase();
+              final String q = _searchQuery.toLowerCase();
+
+              if (!title.contains(q) && !keyword.contains(q)) return false;
+
+            }
+
+            return true;
+
+          }).toList();
+
           final int totalPages = (photos.length / 9).ceil();
+
           return Column(
             children: [
+
+              // ===== 검색창 + 즐겨찾기 토글 =====
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+
+                    Expanded(
+                      child: Container(
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            setState(() {
+                              _searchQuery = value;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: "사진 제목으로 검색",
+                            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                            prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 20),
+                            suffixIcon: _searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                              icon: Icon(Icons.close_rounded, color: Colors.grey.shade400, size: 18),
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = "";
+                                });
+                              },
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 8),
+
+                    GestureDetector(
+
+                      onTap: () {
+                        setState(() {
+                          _favoritesOnly = !_favoritesOnly;
+                        });
+                      },
+
+                      child: Container(
+
+                        width: 44,
+
+                        height: 44,
+
+                        decoration: BoxDecoration(
+                          color: _favoritesOnly ? Colors.redAccent : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+
+                        child: Icon(
+                          _favoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          color: _favoritesOnly ? Colors.white : Colors.grey.shade400,
+                          size: 20,
+                        ),
+
+                      ),
+
+                    ),
+
+                  ],
+                ),
+              ),
+
+              // ===== 사진 개수 표시 =====
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.photo_library_outlined, size: 14, color: Colors.grey.shade400),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${photos.length}장의 사진",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+
               Expanded(
-                child: PageView.builder(
+
+                child: photos.isEmpty
+
+                    ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _favoritesOnly ? Icons.favorite_border_rounded : Icons.search_off_rounded,
+                        size: 56,
+                        color: Colors.grey.shade300,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _favoritesOnly ? "즐겨찾기한 사진이 없어요" : "검색 결과가 없어요",
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                )
+
+                    : PageView.builder(
                   controller: _pageController,
                   onPageChanged: (index) {
                     setState(() {
@@ -319,6 +591,11 @@ class _PhotoPageState extends State<PhotoPage> {
                         ),
                         itemCount: pagePhotos.length,
                         itemBuilder: (context, index) {
+
+                          final String contentId = (pagePhotos[index]['galContentId'] ?? '').toString();
+
+                          final bool isFavorite = _favoriteIds.contains(contentId);
+
                           return InkWell(
                             onTap: () => _showFullImage(pagePhotos[index]),
                             borderRadius: BorderRadius.circular(12),

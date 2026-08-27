@@ -1,6 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
 import 'package:http/http.dart' as http;
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class UserUpdatePage extends StatefulWidget {
@@ -8,12 +11,17 @@ class UserUpdatePage extends StatefulWidget {
   final int userId;
 
   const UserUpdatePage({
+
     super.key,
+
     required this.userId,
+
   });
 
   @override
+
   State<UserUpdatePage> createState() => _UserUpdatePageState();
+
 }
 
 class _UserUpdatePageState extends State<UserUpdatePage> {
@@ -22,10 +30,14 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
 
   final TextEditingController nameController = TextEditingController();
 
+  final TextEditingController accountController = TextEditingController(); // ⭐ 추가
+
   bool isLoading = true;
+
   bool isSaving = false;
 
   @override
+
   void initState() {
 
     super.initState();
@@ -35,9 +47,12 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
   }
 
   @override
+
   void dispose() {
 
     nameController.dispose();
+
+    accountController.dispose(); // ⭐ 추가
 
     super.dispose();
 
@@ -48,10 +63,15 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
     try {
 
       final response = await http.get(
+
         Uri.parse(
-          "${dotenv.env['PHP_URL']}user_update.php"
+
+          "${dotenv.env['PHP_URL']}user_update2.php"
+
               "?user_id=${widget.userId}",
+
         ),
+
       );
 
       final data = jsonDecode(response.body);
@@ -61,14 +81,21 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       if (data["success"] == true) {
 
         setState(() {
+
           nameController.text = data["name"] ?? "";
+
+          accountController.text = data["account_number"] ?? ""; // ⭐ 추가
+
           isLoading = false;
+
         });
 
       } else {
 
         setState(() {
+
           isLoading = false;
+
         });
 
       }
@@ -78,7 +105,9 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       if (!mounted) return;
 
       setState(() {
+
         isLoading = false;
+
       });
 
     }
@@ -92,7 +121,9 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
     if (newName.isEmpty) {
 
       ScaffoldMessenger.of(context).showSnackBar(
+
         const SnackBar(content: Text("닉네임을 입력해주세요")),
+
       );
 
       return;
@@ -104,12 +135,21 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
     try {
 
       final response = await http.post(
-        Uri.parse("${dotenv.env['PHP_URL']}user_update.php"),
+
+        Uri.parse("${dotenv.env['PHP_URL']}user_update2.php"),
+
         headers: {"Content-Type": "application/json"},
+
         body: jsonEncode({
+
           "user_id": widget.userId,
+
           "name": newName,
+
+          "account_number": accountController.text.trim(), // ⭐ 추가
+
         }),
+
       );
 
       final data = jsonDecode(response.body);
@@ -119,12 +159,15 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       if (data["success"] == true) {
 
         // ⭐ 변경 완료 신호(true)를 들고 이전 화면(user.dart)으로 복귀
+
         Navigator.pop(context, true);
 
       } else {
 
         ScaffoldMessenger.of(context).showSnackBar(
+
           SnackBar(content: Text(data["message"] ?? "수정에 실패했습니다")),
+
         );
 
       }
@@ -134,7 +177,9 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+
         SnackBar(content: Text("에러 발생: $e")),
+
       );
 
     } finally {
@@ -148,6 +193,7 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
   }
 
   @override
+
   Widget build(BuildContext context) {
 
     return Scaffold(
@@ -155,19 +201,33 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       backgroundColor: const Color(0xFFF7F7F9),
 
       appBar: AppBar(
+
         title: const Text(
+
           '회원정보 수정',
+
           style: TextStyle(
+
             fontWeight: FontWeight.w700,
+
             color: Colors.black87,
+
             fontSize: 18,
+
           ),
+
         ),
+
         centerTitle: false,
+
         backgroundColor: const Color(0xFFF7F7F9),
+
         elevation: 0,
+
         surfaceTintColor: Colors.transparent,
+
         iconTheme: const IconThemeData(color: Colors.black87),
+
       ),
 
       body: isLoading
@@ -191,49 +251,146 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
                 padding: const EdgeInsets.all(20),
 
                 decoration: BoxDecoration(
+
                   color: Colors.white,
+
                   borderRadius: BorderRadius.circular(22),
+
                   boxShadow: [
+
                     BoxShadow(
+
                       color: Colors.black.withOpacity(0.04),
+
                       blurRadius: 16,
+
                       offset: const Offset(0, 6),
+
                     ),
+
                   ],
+
                 ),
 
                 child: Column(
+
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
 
                     const Text(
+
                       '닉네임',
+
                       style: TextStyle(
+
                         fontSize: 13,
+
                         fontWeight: FontWeight.w700,
+
                         color: Colors.black87,
+
                       ),
+
                     ),
 
                     const SizedBox(height: 10),
 
                     TextField(
+
                       controller: nameController,
+
                       decoration: InputDecoration(
+
                         hintText: '닉네임을 입력하세요',
+
                         hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+
                         prefixIcon: Icon(Icons.person_outline, color: Colors.grey.shade400, size: 20),
+
                         filled: true,
+
                         fillColor: const Color(0xFFF7F7F9),
+
                         contentPadding: const EdgeInsets.symmetric(vertical: 16),
+
                         border: OutlineInputBorder(
+
                           borderRadius: BorderRadius.circular(14),
+
                           borderSide: BorderSide.none,
+
                         ),
+
                       ),
+
+                    ),
+
+                    // ⭐ 계좌번호 입력란 추가
+                    const SizedBox(height: 20),
+
+                    const Text(
+
+                      '계좌번호',
+
+                      style: TextStyle(
+
+                        fontSize: 13,
+
+                        fontWeight: FontWeight.w700,
+
+                        color: Colors.black87,
+
+                      ),
+
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+
+                      '정산 요청 시 상대방에게 표시돼요',
+
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    TextField(
+
+                      controller: accountController,
+
+                      keyboardType: TextInputType.number,
+
+                      decoration: InputDecoration(
+
+                        hintText: '은행명 + 계좌번호 (예: 국민 123456-01-123456)',
+
+                        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+
+                        prefixIcon: Icon(Icons.account_balance_outlined, color: Colors.grey.shade400, size: 20),
+
+                        filled: true,
+
+                        fillColor: const Color(0xFFF7F7F9),
+
+                        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+
+                        border: OutlineInputBorder(
+
+                          borderRadius: BorderRadius.circular(14),
+
+                          borderSide: BorderSide.none,
+
+                        ),
+
+                      ),
+
                     ),
 
                   ],
+
                 ),
 
               ),
@@ -241,23 +398,41 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
               const SizedBox(height: 24),
 
               ElevatedButton(
+
                 onPressed: isSaving ? null : saveName,
+
                 style: ElevatedButton.styleFrom(
+
                   backgroundColor: primary,
+
                   padding: const EdgeInsets.symmetric(vertical: 16),
+
                   elevation: 0,
+
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+
                 ),
+
                 child: isSaving
+
                     ? const SizedBox(
+
                   width: 20,
+
                   height: 20,
+
                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4),
+
                 )
+
                     : const Text(
+
                   '저장하기',
+
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+
                 ),
+
               ),
 
             ],
@@ -269,5 +444,7 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
       ),
 
     );
+
   }
+
 }

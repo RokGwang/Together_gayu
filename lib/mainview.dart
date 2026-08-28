@@ -645,7 +645,7 @@ class _IntroPageState extends State<IntroPage> {
                     Icon(Icons.touch_app_rounded, size: 14, color: Colors.grey.shade400),
                     const SizedBox(width: 4),
                     Text(
-                      '지도 위 지역을 눌러 채팅방을 찾아보세요',
+                      '출처: ⓒ한국관광콘텐츠랩',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade400,

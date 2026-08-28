@@ -21,17 +21,12 @@ class PhotoPage extends StatefulWidget {
 
 class _PhotoPageState extends State<PhotoPage> {
   static const Color primary = Color(0xFFFF7A00);
-
   late Future<List<dynamic>> _photoFuture;
   late PageController _pageController;
   int _currentPage = 0;
-
   final TextEditingController _searchController = TextEditingController();
-
   String _searchQuery = "";
-
   bool _favoritesOnly = false;
-
   Set<String> _favoriteIds = {};
 
   @override
@@ -49,54 +44,54 @@ class _PhotoPageState extends State<PhotoPage> {
     super.dispose();
   }
 
-  // =========================
-  // 즐겨찾기 (기기 로컬 저장 - 지역별로 구분)
-  // =========================
+  // ⭐ 검색어/즐겨찾기 필터가 바뀔 때마다 페이지 위치를 처음으로 리셋
+  void _resetPageToStart() {
 
-  String get _favoriteStorageKey => 'photo_favorites_${widget.regionName}';
+    _currentPage = 0;
 
-  Future<void> _loadFavorites() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
 
-    final prefs = await SharedPreferences.getInstance();
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
 
-    final saved = prefs.getStringList(_favoriteStorageKey) ?? [];
-
-    if (!mounted) return;
-
-    setState(() {
-      _favoriteIds = saved.toSet();
     });
 
   }
 
-  Future<void> _persistFavorites() async {
+  // =========================
+  // 즐겨찾기 (기기 로컬 저장 - 지역별로 구분)
+  // =========================
+  String get _favoriteStorageKey => 'photo_favorites_${widget.regionName}';
 
+  Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_favoriteStorageKey) ?? [];
+    if (!mounted) return;
+    setState(() {
+      _favoriteIds = saved.toSet();
+    });
+  }
 
+  Future<void> _persistFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_favoriteStorageKey, _favoriteIds.toList());
-
   }
 
   void _toggleFavorite(String contentId) {
-
     setState(() {
-
       if (_favoriteIds.contains(contentId)) {
         _favoriteIds.remove(contentId);
       } else {
         _favoriteIds.add(contentId);
       }
-
     });
-
     _persistFavorites();
-
   }
 
   // =========================
   // 위치 찾기 (기존 그대로)
   // =========================
-
   Future<void> _goToMap(String title) async {
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -142,37 +137,17 @@ class _PhotoPageState extends State<PhotoPage> {
   }
 
   // =========================
-  // 공유 / 웹 검색
+  // 공유
   // =========================
-
   Future<void> _sharePhoto(Map<String, dynamic> photo) async {
-
     final String title = (photo['galTitle'] ?? '사진').toString();
-
     final String url = (photo['galWebImageUrl'] ?? '').toString();
-
     await Share.share('$title\n$url', subject: title);
-
-  }
-
-  Future<void> _searchOnWeb(String title) async {
-
-    if (title.isEmpty) return;
-
-    final query = Uri.encodeComponent('${widget.regionName} $title');
-
-    final uri = Uri.parse('https://www.google.com/search?q=$query');
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-
   }
 
   // =========================
   // 데이터 조회
   // =========================
-
   Future<List<dynamic>> fetchFilteredPhotos() async {
     try {
       final url = '${dotenv.env['PHP_URL']}api_photo.php?keyword=${Uri.encodeComponent(widget.regionName)}&numOfRows=800';
@@ -194,178 +169,149 @@ class _PhotoPageState extends State<PhotoPage> {
   }
 
   // =========================
-  // 스와이프 가능한 풀스크린 뷰어
+  // 사진 크게보기 (안정적인 롤백 버전 + 즐겨찾기/공유 연결)
   // =========================
-
   void _showFullImage(Map<String, dynamic> photo) {
     final String originalUrl = photo['galWebImageUrl'] ?? '';
     final String proxyUrl = '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(originalUrl)}';
+    final String contentId = (photo['galContentId'] ?? '').toString();
+    final String title = (photo['galTitle'] ?? '').toString().trim();
 
     showDialog(
       context: context,
       barrierColor: Colors.transparent,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            color: Colors.black.withOpacity(0.6),
-            child: Stack( // ⭐ Center를 Stack으로 감싸서 닫기 버튼 배치 공간 확보
-              children: [
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
 
-                Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-                    child: GestureDetector(
-                      onTap: () {}, // ⭐ 내부 탭은 닫힘 방지 (닫기 버튼 오작동 방지용으로 추가)
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          InteractiveViewer(
-                            clipBehavior: Clip.none,
-                            child: Image.network(
-                              proxyUrl,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            width: double.infinity,
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        photo['galTitle'] ?? '제목 없음',
-                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
-                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        "ID: ${photo['galContentId'] ?? '정보 없음'}",
-                                        style: const TextStyle(color: Colors.white70, fontSize: 13),
-                                      ),
-                                    ],
-                                  ),
+          final bool isFavorite = _favoriteIds.contains(contentId);
+
+          return BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                color: Colors.black.withOpacity(0.6),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+                        child: GestureDetector(
+                          onTap: () {}, // 내부 탭은 닫힘 방지
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InteractiveViewer(
+                                clipBehavior: Clip.none,
+                                child: Image.network(
+                                  proxyUrl,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
                                 ),
-                                Column(
+                              ),
+                              const SizedBox(height: 15),
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                width: double.infinity,
+                                child: Row(
                                   children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
-                                      onPressed: () { /* GPS 동작 */ },
-                                      padding: EdgeInsets.zero,
-                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            photo['galTitle'] ?? '제목 없음',
+                                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            "작가: ${photo['galPhotographer'] ?? '정보 없음'}",
+                                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            "ID: ${photo['galContentId'] ?? '정보 없음'}",
+                                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 10),
-                                    IconButton(
-                                      icon: const Icon(Icons.search, color: Colors.white, size: 24),
-                                      onPressed: () { /* 검색 동작 */ },
-                                      padding: EdgeInsets.zero,
-                                      style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                    Column(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            _goToMap(title);
+                                          },
+                                          padding: EdgeInsets.zero,
+                                          style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        IconButton(
+                                          // ⭐ 검색 아이콘 -> 즐겨찾기로 교체
+                                          icon: Icon(
+                                            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                            color: isFavorite ? Colors.redAccent : Colors.white,
+                                            size: 24,
+                                          ),
+                                          onPressed: () {
+                                            _toggleFavorite(contentId);
+                                            setDialogState(() {}); // 팝업 내 아이콘 즉시 갱신
+                                          },
+                                          padding: EdgeInsets.zero,
+                                          style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        IconButton(
+                                          // ⭐ 공유 버튼 추가
+                                          icon: const Icon(Icons.ios_share_rounded, color: Colors.white, size: 24),
+                                          onPressed: () => _sharePhoto(photo),
+                                          padding: EdgeInsets.zero,
+                                          style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.2), shape: const CircleBorder()),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ⭐ 닫기 버튼
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: SafeArea(
-                    child: GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
                       ),
                     ),
-                  ),
+                    // 닫기 버튼
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: SafeArea(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+
+        },
       ),
     );
-  }
-
-  Widget _blurIconButton({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
-  }
-
-  Widget _actionChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-
-    return InkWell(
-
-      onTap: onTap,
-
-      borderRadius: BorderRadius.circular(12),
-
-      child: Container(
-
-        padding: const EdgeInsets.symmetric(vertical: 10),
-
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-
-      ),
-
-    );
-
   }
 
   @override
@@ -408,41 +354,26 @@ class _PhotoPageState extends State<PhotoPage> {
               ),
             );
           }
-
           final allPhotos = snapshot.data!;
-
-          // ⭐ 검색어 + 즐겨찾기 필터 적용
           final List<dynamic> photos = allPhotos.where((p) {
-
             final String contentId = (p['galContentId'] ?? '').toString();
-
             if (_favoritesOnly && !_favoriteIds.contains(contentId)) return false;
-
             if (_searchQuery.isNotEmpty) {
-
               final String title = (p['galTitle'] ?? '').toString().toLowerCase();
               final String keyword = (p['galSearchKeyword'] ?? '').toString().toLowerCase();
               final String q = _searchQuery.toLowerCase();
-
               if (!title.contains(q) && !keyword.contains(q)) return false;
-
             }
-
             return true;
-
           }).toList();
-
           final int totalPages = (photos.length / 9).ceil();
-
           return Column(
             children: [
-
               // ===== 검색창 + 즐겨찾기 토글 =====
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Row(
                   children: [
-
                     Expanded(
                       child: Container(
                         height: 44,
@@ -462,6 +393,7 @@ class _PhotoPageState extends State<PhotoPage> {
                           onChanged: (value) {
                             setState(() {
                               _searchQuery = value;
+                              _resetPageToStart(); // ⭐ 검색어 변경 시 스크롤/페이지 리셋
                             });
                           },
                           decoration: InputDecoration(
@@ -476,6 +408,7 @@ class _PhotoPageState extends State<PhotoPage> {
                                 setState(() {
                                   _searchController.clear();
                                   _searchQuery = "";
+                                  _resetPageToStart(); // ⭐ 검색어 초기화 시에도 리셋
                                 });
                               },
                             ),
@@ -488,23 +421,17 @@ class _PhotoPageState extends State<PhotoPage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(width: 8),
-
                     GestureDetector(
-
                       onTap: () {
                         setState(() {
                           _favoritesOnly = !_favoritesOnly;
+                          _resetPageToStart(); // ⭐ 즐겨찾기 필터 전환 시에도 리셋
                         });
                       },
-
                       child: Container(
-
                         width: 44,
-
                         height: 44,
-
                         decoration: BoxDecoration(
                           color: _favoritesOnly ? Colors.redAccent : Colors.white,
                           borderRadius: BorderRadius.circular(14),
@@ -516,21 +443,16 @@ class _PhotoPageState extends State<PhotoPage> {
                             ),
                           ],
                         ),
-
                         child: Icon(
                           _favoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                           color: _favoritesOnly ? Colors.white : Colors.grey.shade400,
                           size: 20,
                         ),
-
                       ),
-
                     ),
-
                   ],
                 ),
               ),
-
               // ===== 사진 개수 표시 =====
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
@@ -545,11 +467,8 @@ class _PhotoPageState extends State<PhotoPage> {
                   ],
                 ),
               ),
-
               Expanded(
-
                 child: photos.isEmpty
-
                     ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -567,7 +486,6 @@ class _PhotoPageState extends State<PhotoPage> {
                     ],
                   ),
                 )
-
                     : PageView.builder(
                   controller: _pageController,
                   onPageChanged: (index) {
@@ -591,35 +509,55 @@ class _PhotoPageState extends State<PhotoPage> {
                         ),
                         itemCount: pagePhotos.length,
                         itemBuilder: (context, index) {
-
                           final String contentId = (pagePhotos[index]['galContentId'] ?? '').toString();
-
                           final bool isFavorite = _favoriteIds.contains(contentId);
-
                           return InkWell(
                             onTap: () => _showFullImage(pagePhotos[index]),
                             borderRadius: BorderRadius.circular(12),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: CachedNetworkImage(
-                                imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
-                                fit: BoxFit.cover,
-                                memCacheWidth: 200,
-                                placeholder: (context, url) => Container(
-                                  color: Colors.grey.shade100,
-                                  child: const Center(
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                            child: Stack(
+                              children: [
+
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: CachedNetworkImage(
+                                    imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    memCacheWidth: 200,
+                                    placeholder: (context, url) => Container(
+                                      color: Colors.grey.shade100,
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                                        ),
+                                      ),
+                                    ),
+                                    errorWidget: (context, url, error) => Container(
+                                      color: Colors.grey.shade100,
+                                      child: Icon(Icons.broken_image_rounded, color: Colors.grey.shade400, size: 18),
                                     ),
                                   ),
                                 ),
-                                errorWidget: (context, url, error) => Container(
-                                  color: Colors.grey.shade100,
-                                  child: Icon(Icons.broken_image_rounded, color: Colors.grey.shade400, size: 18),
-                                ),
-                              ),
+
+                                // ⭐ 그리드에도 즐겨찾기 표시(읽기 전용 뱃지)
+                                if (isFavorite)
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.45),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 12),
+                                    ),
+                                  ),
+
+                              ],
                             ),
                           );
                         },

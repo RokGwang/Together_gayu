@@ -12,9 +12,9 @@ void main() async {
   await dotenv.load(fileName: ".env");
   SocketService.instance.connect();
   // 앱 실행 전 SDK 초기화 필수 (이 부분이 빠지면 오류 발생)
-  /*KakaoSdk.init(
+  KakaoSdk.init(
     nativeAppKey: dotenv.env['kakao'] ?? '',
-  );*/
+  );
   runApp(const MyApp());
 }
 

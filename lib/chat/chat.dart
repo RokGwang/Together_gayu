@@ -1114,7 +1114,7 @@ class _ChatPageState extends State<ChatPage> {
     });
     try {
       final response = await http.post(
-        Uri.parse("${dotenv.env['PHP_URL']}send_settlement2.php"),
+        Uri.parse("${dotenv.env['PHP_URL']}send_settlement.php"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "room_id": widget.roomId,
@@ -2511,6 +2511,11 @@ class _ChatPageState extends State<ChatPage> {
 
                                 if (accountNumber.isNotEmpty) ...[ // ⭐ 추가
                                   const SizedBox(height: 10),
+                                  Text(
+                                    "아래 계좌로 입금해주세요", // ⭐ 추가
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 6), // ⭐ 추가
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2532,35 +2537,6 @@ class _ChatPageState extends State<ChatPage> {
                                     ),
                                   ),
                                 ],
-
-                                const SizedBox(height: 12),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      // 아직 기능 없음 (추후 구현 예정)
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: primary,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                                    label: const Text(
-                                      "송금하기",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
                               ],
                             ),
 

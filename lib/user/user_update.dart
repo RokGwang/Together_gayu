@@ -66,7 +66,7 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
 
         Uri.parse(
 
-          "${dotenv.env['PHP_URL']}user_update2.php"
+          "${dotenv.env['PHP_URL']}user_update.php"
 
               "?user_id=${widget.userId}",
 
@@ -136,7 +136,7 @@ class _UserUpdatePageState extends State<UserUpdatePage> {
 
       final response = await http.post(
 
-        Uri.parse("${dotenv.env['PHP_URL']}user_update2.php"),
+        Uri.parse("${dotenv.env['PHP_URL']}user_update.php"),
 
         headers: {"Content-Type": "application/json"},
 

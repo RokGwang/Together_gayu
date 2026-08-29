@@ -462,7 +462,7 @@ class _IntroPageState extends State<IntroPage> {
                         Navigator.push(pageContext, MaterialPageRoute(builder: (context) => InformationPage(regionName: region.name)));
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: primary, padding: const EdgeInsets.symmetric(vertical: 14), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                      child: const Text('관광지 소개', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      child: Text('${region.name} 둘러보기', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                     ),
                   ),
                   const SizedBox(height: 12),

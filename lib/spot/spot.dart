@@ -158,8 +158,6 @@ class _SpotPageState extends State<SpotPage> {
   // ⭐ 기초 중심(hub) 데이터 조회 - 크라우드 데이터의 signguCd 전부 사용, 이름 중복 제외
   Future<List<Map<String, dynamic>>> _fetchHubSpots(_SpotResult crowdResult) async {
 
-    final Set<String> excludeNames = crowdResult.spots.map((s) => s['name'] ?? '').toSet();
-
     final Set<String> signguCds = crowdResult.spots
         .map((s) => s['signguCd'] ?? '')
         .where((e) => e.isNotEmpty)
@@ -210,8 +208,6 @@ class _SpotPageState extends State<SpotPage> {
           final String name = (item['hubTatsNm'] ?? '').toString();
 
           if (name.isEmpty) continue;
-
-          if (excludeNames.contains(name)) continue; // 혼잡도 탭과 중복 제외
 
           if (seenNames.contains(name)) continue; // signguCd 여러 개 순회 시 중복 제외
 

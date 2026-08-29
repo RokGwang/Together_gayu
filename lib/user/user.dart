@@ -80,7 +80,7 @@ class _UserPageState extends State<UserPage> {
   Future<void> _sendInquiryEmail() async {
     final uri = Uri(
       scheme: 'mailto',
-      path: 'support@gachigayoo.app',
+      path: 'pugguukk@gmail.com',
       query: 'subject=${Uri.encodeComponent("[같이가유] 문의하기")}',
     );
     if (await canLaunchUrl(uri)) {

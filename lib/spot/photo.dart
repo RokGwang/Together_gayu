@@ -233,10 +233,6 @@ class _PhotoPageState extends State<PhotoPage> {
                                             style: const TextStyle(color: Colors.white70, fontSize: 13),
                                           ),
                                           const SizedBox(height: 8),
-                                          Text(
-                                            "ID: ${photo['galContentId'] ?? '정보 없음'}",
-                                            style: const TextStyle(color: Colors.white70, fontSize: 13),
-                                          ),
                                         ],
                                       ),
                                     ),

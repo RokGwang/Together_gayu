@@ -664,7 +664,6 @@ class _ChatPageState extends State<ChatPage> {
 
             Row(
               children: [
-
                 Expanded(
                   child: _AttachTile(
                     icon: Icons.photo_rounded,
@@ -676,9 +675,7 @@ class _ChatPageState extends State<ChatPage> {
                     },
                   ),
                 ),
-
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: _AttachTile(
                     icon: Icons.location_on_rounded,
@@ -690,7 +687,18 @@ class _ChatPageState extends State<ChatPage> {
                     },
                   ),
                 ),
-
+                const SizedBox(width: 12), // ⭐ 추가
+                Expanded( // ⭐ 추가
+                  child: _AttachTile(
+                    icon: Icons.local_taxi_rounded,
+                    label: "택시비 산출",
+                    color: primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      showTaxiFareDialog();
+                    },
+                  ),
+                ),
               ],
             ),
 
@@ -702,6 +710,265 @@ class _ChatPageState extends State<ChatPage> {
     );
 
   }
+
+  // =========================
+  // 이모티콘
+  // =========================
+
+  Future<void> showEmojiSheet() async {
+
+    // 키보드가 떠 있으면 먼저 내려서 바텀시트가 가려지지 않도록 함
+    FocusScope.of(context).unfocus();
+
+    Map<String, List<dynamic>>? categories;
+
+    try {
+
+      final response = await http.get(Uri.parse("${dotenv.env['PHP_URL']}chat_emoji.php"));
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] == true) {
+
+        final raw = data["categories"] as Map<String, dynamic>;
+
+        categories = raw.map((key, value) => MapEntry(key, value as List<dynamic>));
+
+      }
+
+    } catch (e) {
+      // 실패 시 categories = null 유지 -> 아래에서 빈 상태 처리
+    }
+
+    if (!mounted) return;
+
+    if (categories == null || categories.isEmpty) {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("이모티콘을 불러올 수 없습니다")),
+      );
+
+      return;
+
+    }
+
+    final List<String> categoryKeys = categories.keys.toList();
+
+    String selectedCategory = categoryKeys.first;
+
+    showModalBottomSheet(
+
+      context: context,
+
+      backgroundColor: Colors.transparent,
+
+      isScrollControlled: true,
+
+      builder: (_) {
+
+        return StatefulBuilder(
+
+          builder: (context, setSheetState) {
+
+            final List<dynamic> emojis = categories![selectedCategory] ?? [];
+
+            return Container(
+
+              height: 340,
+
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+
+                  // ⭐ 카테고리 탭 (카테고리가 여러 개일 때만 표시)
+                  if (categoryKeys.length > 1)
+
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: categoryKeys.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+
+                          final cat = categoryKeys[index];
+
+                          final bool selected = cat == selectedCategory;
+
+                          return GestureDetector(
+                            onTap: () => setSheetState(() => selectedCategory = cat),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: selected ? primary : const Color(0xFFF7F7F9),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                cat,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: selected ? Colors.white : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          );
+
+                        },
+                      ),
+                    ),
+
+                  if (categoryKeys.length > 1) const SizedBox(height: 12),
+
+                  Expanded(
+
+                    child: emojis.isEmpty
+
+                        ? Center(
+                      child: Text(
+                        "등록된 이모티콘이 없습니다",
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                      ),
+                    )
+
+                        : GridView.builder(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 16, // ⭐ 라벨 텍스트 공간 확보를 위해 살짝 늘림
+                        childAspectRatio: 0.85,
+                      ),
+                      itemCount: emojis.length,
+                      itemBuilder: (context, index) {
+
+                        // ⭐ 핵심 수정: Map에서 file_name/label을 정확히 꺼내서 사용
+                        final Map<String, dynamic> emoji = emojis[index] as Map<String, dynamic>;
+
+                        final String fileName = (emoji['file_name'] ?? '').toString();
+
+                        final String label = (emoji['label'] ?? '').toString();
+
+                        final String url = "$baseUrl/uploads/emoji/$fileName";
+
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            sendEmoji(fileName);
+                          },
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    url,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      color: Colors.grey.shade100,
+                                      child: Icon(Icons.broken_image_rounded, color: Colors.grey.shade300, size: 20),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              if (label.isNotEmpty) ...[
+
+                                const SizedBox(height: 4),
+
+                                Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                                ),
+
+                              ],
+
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                  ),
+
+                ],
+              ),
+
+            );
+
+          },
+
+        );
+
+      },
+
+    );
+
+  }
+
+  Future<void> sendEmoji(String fileName) async {
+
+    try {
+
+      final response = await http.post(
+        Uri.parse("${dotenv.env['PHP_URL']}chat_emoji_send.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "room_id": widget.roomId,
+          "user_id": widget.userId,
+          "file_name": fileName,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (data["success"] != true) {
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "이모티콘 전송 실패")),
+        );
+
+      }
+
+      await loadMessages(initial: false);
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 : $e")),
+      );
+
+    }
+
+  }
+
 
   Future<void> pickAndSendImage() async {
 
@@ -818,14 +1085,339 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // =========================
-  // 정산
+  // 택시비 산출
   // =========================
 
-  Future<void> showSettlementDialog() async {
+  Future<void> showTaxiFareDialog() async {
 
     if (roomInfo == null) return;
 
-    amountController.clear();
+    final String? startName = roomInfo!["start"]; // null이면 빠른매칭 방(출발지 없음)
+    final String endName = roomInfo!["end"] ?? "";
+    final String region = roomInfo!["region"] ?? ""; // ⭐ chat.php의 room 정보에 region 필드가 없다면 아래 안내 참고
+
+    double? pickupLat;
+    double? pickupLng;
+    bool isCalculating = false;
+    bool hasResult = false;
+    int? fareResult;
+    double? distanceResult;
+    int? durationResult;
+    String? errorMessage;
+
+    await showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+
+          Future<void> calculateFare() async {
+
+            setDialogState(() {
+              isCalculating = true;
+              errorMessage = null;
+            });
+
+            try {
+
+              final body = {
+                "region": region,
+                "end_name": endName,
+                if (startName != null) "start_name": startName,
+                if (pickupLat != null) "pickup_lat": pickupLat,
+                if (pickupLng != null) "pickup_lng": pickupLng,
+              };
+
+              final response = await http.post(
+                Uri.parse("${dotenv.env['PHP_URL']}chat_taxi.php"),
+                headers: {"Content-Type": "application/json"},
+                body: jsonEncode(body),
+              );
+
+              final data = jsonDecode(response.body);
+
+              if (data["success"] == true) {
+
+                setDialogState(() {
+                  hasResult = true;
+                  fareResult = data["fare"];
+                  distanceResult = (data["distance_km"] as num).toDouble();
+                  durationResult = data["duration_min"];
+                  isCalculating = false;
+                });
+
+              } else {
+
+                setDialogState(() {
+                  errorMessage = data["message"] ?? "택시비를 계산할 수 없습니다";
+                  isCalculating = false;
+                });
+
+              }
+
+            } catch (e) {
+
+              setDialogState(() {
+                errorMessage = "에러 발생: $e";
+                isCalculating = false;
+              });
+
+            }
+
+          }
+
+          Future<void> pickStartLocation() async {
+
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LocationPickerPage()),
+            );
+
+            if (result == null) return;
+
+            setDialogState(() {
+              pickupLat = (result["lat"] as num).toDouble();
+              pickupLng = (result["lng"] as num).toDouble();
+            });
+
+          }
+
+          final bool canCalculate = (startName != null) || (pickupLat != null && pickupLng != null);
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Row(
+                    children: [
+
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(color: primary.withOpacity(0.1), shape: BoxShape.circle),
+                        child: Icon(Icons.local_taxi_rounded, color: primary, size: 22),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      const Expanded(
+                        child: Text(
+                          "택시비 산출",
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87),
+                        ),
+                      ),
+
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ===== 출발지 표시/설정 =====
+                  Row(
+                    children: [
+
+                      Icon(Icons.trip_origin_rounded, size: 16, color: Colors.grey.shade500),
+
+                      const SizedBox(width: 8),
+
+                      Expanded(
+                        child: startName != null
+                            ? Text(
+                          startName,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                        )
+                            : (pickupLat != null
+                            ? Row(
+                          children: [
+                            const Text("탑승 위치 지정됨", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: pickStartLocation,
+                              child: Text("변경", style: TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        )
+                            : OutlinedButton.icon(
+                          onPressed: pickStartLocation,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            side: BorderSide(color: primary.withOpacity(0.4)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: Icon(Icons.add_location_alt_rounded, size: 14, color: primary),
+                          label: Text("탑승 위치", style: TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.w700)),
+                        )),
+                      ),
+
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Row(
+                    children: [
+                      Icon(Icons.place_rounded, size: 16, color: Colors.grey.shade500),
+                      const SizedBox(width: 8),
+                      Text(
+                        endName,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  if (!hasResult) ...[
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: (isCalculating || !canCalculate) ? null : calculateFare,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: (!canCalculate) ? Colors.grey.shade300 : primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: isCalculating
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.calculate_rounded, color: Colors.white, size: 18),
+                        label: Text(
+                          isCalculating ? "계산 중..." : "택시비 예상",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 10),
+                      Text(errorMessage!, style: const TextStyle(fontSize: 12, color: Colors.redAccent)),
+                    ],
+
+                  ] else ...[
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: const Color(0xFFF7F7F9), borderRadius: BorderRadius.circular(14)),
+                      child: Column(
+                        children: [
+
+                          Text(
+                            "${formatCurrency(fareResult!)}원",
+                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: primary),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Text(
+                            "약 ${distanceResult!.toStringAsFixed(1)}km · ${durationResult}분 예상",
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                          ),
+
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+
+                              Navigator.pop(context);
+
+                              try {
+
+                                await http.post(
+                                  Uri.parse("${dotenv.env['PHP_URL']}taxi_fare_message.php"),
+                                  headers: {"Content-Type": "application/json"},
+                                  body: jsonEncode({
+                                    "room_id": widget.roomId,
+                                    "fare": fareResult,
+                                    "distance_km": distanceResult,
+                                    "duration_min": durationResult,
+                                  }),
+                                );
+
+                                await loadMessages(initial: false);
+
+                              } catch (e) {
+                                // 무시
+                              }
+
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(color: primary.withOpacity(0.4)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            child: Text("출력", style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+
+                              Navigator.pop(context);
+
+                              amountController.text = fareResult!.toString();
+
+                              showSettlementDialog(clearAmount: false);
+
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            child: const Text("정산하기", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+
+                      ],
+                    ),
+
+                  ],
+
+                ],
+              ),
+            ),
+          );
+
+        },
+      ),
+    );
+
+  }
+
+  // =========================
+  // 정산
+  // =========================
+
+  Future<void> showSettlementDialog({bool clearAmount = true}) async {
+
+    if (roomInfo == null) return;
+
+    if (clearAmount) {
+      amountController.clear();
+    }
 
     final int maxPeople = (roomInfo!["current_people"] ?? 1) is int
         ? roomInfo!["current_people"]
@@ -1949,6 +2541,15 @@ class _ChatPageState extends State<ChatPage> {
         (msg["message"] ?? "").toString().startsWith("SETTLEMENT|");
   }
 
+  bool isTaxiFareMessage(dynamic msg) {
+    return isSystemMessage(msg) &&
+        (msg["message"] ?? "").toString().startsWith("TAXI_FARE|");
+  }
+
+  bool isEmojiMessage(dynamic msg) {
+    return (msg["message_type"] ?? "text") == "emoji";
+  }
+
   bool isImageMessage(dynamic msg) {
     return (msg["message_type"] ?? "text") == "image";
   }
@@ -2044,6 +2645,25 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget buildMessageBubbleContent(dynamic msg, bool isMine) {
+
+    if (isEmojiMessage(msg)) {
+
+      final String imageUrl = "$baseUrl/${msg["message"]}";
+
+      return Image.network(
+        imageUrl,
+        width: 96,
+        height: 96,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Container(
+          width: 96,
+          height: 96,
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+        ),
+      );
+
+    }
 
     if (isImageMessage(msg)) {
 
@@ -2341,6 +2961,7 @@ class _ChatPageState extends State<ChatPage> {
                   final bool isSystem = isSystemMessage(msg);
 
                   final bool isSettlement = isSettlementMessage(msg);
+                  final bool isTaxiFare = isTaxiFareMessage(msg);
 
                   final prevMsg = reversedIndex > 0 ? messages[reversedIndex - 1] : null;
 
@@ -2348,6 +2969,84 @@ class _ChatPageState extends State<ChatPage> {
 
                   final showDateSeparator = prevMsg == null ||
                       !isSameDate(prevMsg["created_at"], msg["created_at"]);
+
+                  // ===== 택시비 메시지 (전용 카드, 심플) =====
+                  if (isTaxiFare) {
+
+                    final parts = (msg["message"] as String).split("|");
+
+                    final fare = int.tryParse(parts.length > 1 ? parts[1] : "0") ?? 0;
+                    final distanceKm = double.tryParse(parts.length > 2 ? parts[2] : "0") ?? 0;
+                    final durationMin = int.tryParse(parts.length > 3 ? parts[3] : "0") ?? 0;
+
+                    return Column(
+                      children: [
+
+                        if (showDateSeparator)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatDateSeparator(msg["created_at"]),
+                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Center(
+                            child: Container(
+
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: primary.withOpacity(0.25)),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
+                                ],
+                              ),
+
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+
+                                  Icon(Icons.local_taxi_rounded, size: 16, color: primary),
+
+                                  const SizedBox(width: 8),
+
+                                  Text(
+                                    "예상 택시비 ${formatCurrency(fare)}원",
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                                  ),
+
+                                  const SizedBox(width: 6),
+
+                                  Text(
+                                    "(${distanceKm.toStringAsFixed(1)}km · ${durationMin}분)",
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                                  ),
+
+                                ],
+                              ),
+
+                            ),
+                          ),
+                        ),
+
+                      ],
+                    );
+
+                  }
 
                   // ===== 정산 메시지 (전용 카드) =====
                   if (isSettlement) {
@@ -2726,7 +3425,10 @@ class _ChatPageState extends State<ChatPage> {
                                       ],
 
                                       Flexible(
-                                        child: Container(
+                                        child: isEmojiMessage(msg)
+                                        // ⭐ 이모티콘은 말풍선 배경 없이 이미지만 표시
+                                            ? buildMessageBubbleContent(msg, isMine)
+                                            : Container(
 
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 14,
@@ -2876,6 +3578,16 @@ class _ChatPageState extends State<ChatPage> {
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 12,
+                            ),
+
+                            // ⭐ 추가: 이모티콘 버튼
+                            suffixIcon: GestureDetector(
+                              onTap: showEmojiSheet,
+                              child: Icon(
+                                Icons.emoji_emotions_outlined,
+                                color: Colors.grey.shade400,
+                                size: 22,
+                              ),
                             ),
 
                           ),

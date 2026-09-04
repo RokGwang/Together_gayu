@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import 'photo.dart';
 import 'spot.dart';
+import 'content.dart';
 
 class InformationPage extends StatefulWidget {
   final String regionName;
@@ -39,7 +40,7 @@ class _InformationPageState extends State<InformationPage> {
   // ⭐ 오늘 기준 지난 달을 YYYYMM으로 반환
   String _lastMonthYm() {
     final now = DateTime.now();
-    final lastMonthDate = DateTime(now.year, now.month - 1, 1);
+    final lastMonthDate = DateTime(now.year, now.month - 2, 1);
     final y = lastMonthDate.year.toString();
     final m = lastMonthDate.month.toString().padLeft(2, '0');
     return "$y$m";
@@ -582,18 +583,44 @@ class _InformationPageState extends State<InformationPage> {
                             );
                           },
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                             side: BorderSide(color: primary.withOpacity(0.4)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          icon: Icon(Icons.map_rounded, color: primary, size: 18),
+                          icon: Icon(Icons.map_rounded, color: primary, size: 16),
                           label: Text(
                             '관광지 목록',
-                            style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 14),
+                            style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 12),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8), // ⭐ 12 -> 8로 조정 (3개 배치를 위한 여백 축소)
+
+                      // ⭐ 신규: 컨텐츠 버튼
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ContentPage(regionName: widget.regionName),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                            side: BorderSide(color: primary.withOpacity(0.4)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          icon: Icon(Icons.article_rounded, color: primary, size: 16),
+                          label: Text(
+                            '컨텐츠',
+                            style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () {
@@ -604,14 +631,14 @@ class _InformationPageState extends State<InformationPage> {
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primary,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                             elevation: 0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           ),
-                          icon: const Icon(Icons.photo_library_rounded, color: Colors.white, size: 18),
+                          icon: const Icon(Icons.photo_library_rounded, color: Colors.white, size: 16),
                           label: const Text(
                             '갤러리',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
                           ),
                         ),
                       ),

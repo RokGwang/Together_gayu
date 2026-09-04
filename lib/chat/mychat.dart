@@ -614,6 +614,10 @@ class _RoomCard extends StatelessWidget {
 
       lastMessage = "정산 요청이 도착";
 
+    } else if (rawLastMessage != null && rawLastMessage.startsWith("TAXI_FARE|")) { // ⭐ 추가
+
+      lastMessage = "예상 택시비입니다";
+
     } else if (lastMessageType == "image") {
 
       lastMessage = "사진을 보냈습니다";
@@ -621,6 +625,12 @@ class _RoomCard extends StatelessWidget {
     } else if (lastMessageType == "location") {
 
       lastMessage = "위치를 공유했습니다";
+
+    } else if (lastMessageType == "emoji") { // ⭐ 추가
+
+      final String? label = room["last_message_label"];
+
+      lastMessage = (label != null && label.isNotEmpty) ? "($label)" : "이모티콘을 보냈습니다";
 
     } else {
 

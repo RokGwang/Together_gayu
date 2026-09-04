@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'spot/information.dart'; // 이 줄이 없으면 추가하세요.
 import 'dart:ui';
 import 'up.dart';
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ===== 지역 정보 모델 =====
 class RegionInfo {
@@ -44,6 +46,7 @@ class IntroPage extends StatefulWidget {
 
 
 class _IntroPageState extends State<IntroPage> {
+
   Future<List<dynamic>> fetchPhotosByRegion(String regionName) async {
     try {
       final url = '${dotenv.env['PHP_URL']}api_photo.php?keyword=${Uri.encodeComponent(regionName)}&numOfRows=1000';
@@ -493,6 +496,20 @@ class _IntroPageState extends State<IntroPage> {
     );
   }
 
+  void _openAdvisor() {
+
+    showDialog(
+      context: context,
+      builder: (_) => _AdvisorDialogContent(
+        pageContext: context,
+        userId: widget.userId,
+        regions: regions,
+        primary: primary,
+      ),
+    );
+
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -542,7 +559,7 @@ class _IntroPageState extends State<IntroPage> {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          '어디로 떠나볼까요?',
+                          '같이 떠나볼까요?',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -658,46 +675,84 @@ class _IntroPageState extends State<IntroPage> {
 
               const SizedBox(height: 28),
 
-              const Text(
-                '지역 바로가기',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
+// ===== AI 여행 동행 어드바이저 =====
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
 
-              const SizedBox(height: 12),
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: primary,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    child: const Icon(Icons.travel_explore_rounded, color: Colors.white, size: 26),
+                  ),
 
-              // ===== 지역 바로가기 카드 (그리드) =====
-              GridView.builder(
+                  const SizedBox(width: 12),
 
-                shrinkWrap: true,
+                  Expanded(
 
-                physics: const NeverScrollableScrollPhysics(),
+                    child: Container(
 
-                itemCount: regions.length,
+                      padding: const EdgeInsets.all(16),
 
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.05,
-                ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                        ],
+                      ),
 
-                itemBuilder: (context, index) {
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
 
-                  final region = regions[index];
+                          const Text(
+                            "오늘은 어디로 떠나볼까요?",
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.black87),
+                          ),
 
-                  return _RegionCard(
-                    title: region.name,
-                    icon: Icons.directions_car_rounded,
-                    color: primary,
-                    onTap: () => showRegionPopup(region),
-                  );
+                          const SizedBox(height: 4),
 
-                },
+                          Text(
+                            "실시간 관광 빅데이터로 지금 동행 구하기 좋은 지역을 골라드려요",
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                          ),
 
+                          const SizedBox(height: 12),
+
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _openAdvisor,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primary,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
+                              label: const Text(
+                                "AI 관광 지역 추천",
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                              ),
+                            ),
+                          ),
+
+                        ],
+                      ),
+
+                    ),
+
+                  ),
+
+                ],
               ),
 
               const SizedBox(height: 8),
@@ -868,6 +923,820 @@ class _RegionCard extends StatelessWidget {
 
       ),
 
+    );
+
+  }
+
+}
+class _InfoTag extends StatelessWidget {
+
+  final IconData icon;
+
+  final String label;
+
+  const _InfoTag({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.grey.shade600),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+        ],
+      ),
+    );
+
+  }
+
+}
+
+class _ScoreBar extends StatelessWidget {
+
+  final String label;
+
+  final double value;
+
+  final Color color;
+
+  const _ScoreBar({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+
+        const SizedBox(height: 4),
+
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: LinearProgressIndicator(
+            value: (value / 100).clamp(0, 1),
+            minHeight: 6,
+            backgroundColor: Colors.grey.shade100,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
+}
+enum _AdvisorStep { checking, survey, loading, result, error }
+
+class _AdvisorDialogContent extends StatefulWidget {
+
+  final BuildContext pageContext;
+  final int userId;
+  final List<RegionInfo> regions;
+  final Color primary;
+
+  const _AdvisorDialogContent({
+    required this.pageContext,
+    required this.userId,
+    required this.regions,
+    required this.primary,
+  });
+
+  @override
+  State<_AdvisorDialogContent> createState() => _AdvisorDialogContentState();
+
+}
+
+class _AdvisorDialogContentState extends State<_AdvisorDialogContent> {
+
+  _AdvisorStep step = _AdvisorStep.checking; // ⭐ 잠금 확인이 끝날 때까지 로딩
+
+  String selectedAge = '3101';
+  String selectedTheme = 'sports';
+  String selectedBudget = 'saving';
+
+  Map<String, dynamic>? resultData;
+  String errorMessage = '';
+
+  Timer? _loadingMessageTimer;
+  int _loadingMessageIndex = 0;
+
+  Duration? _lockRemaining;
+  Timer? _lockTimer;
+
+  static const String _prefsKey = 'ai_recommend_last_time';
+
+  final List<String> _loadingMessages = [
+    "15개 지역의 최신 관광 데이터를 모으는 중...",
+    "회원님의 나이대와 잘 맞는 지역을 찾는 중...",
+    "여행 취향에 맞는 지역을 분석하는 중...",
+    "예산 스타일에 맞춰 우선순위를 조정하는 중...",
+    "AI가 추천 코멘트를 작성하는 중...",
+  ];
+
+  static const List<Map<String, String>> ageOptions = [
+    {'code': '3101', 'label': '10대'},
+    {'code': '3102', 'label': '20대'},
+    {'code': '3103', 'label': '30대'},
+    {'code': '3104', 'label': '40대'},
+    {'code': '3105', 'label': '50대'},
+    {'code': '3106', 'label': '60대'},
+    {'code': '3107', 'label': '70대'},
+  ];
+
+  static const List<Map<String, String>> themeOptions = [
+    {'key': 'sports', 'label': '레포츠·스포츠', 'icon': '🏃'},
+    {'key': 'healing', 'label': '휴식·힐링', 'icon': '🌿'},
+    {'key': 'food', 'label': '미식', 'icon': '🍽️'},
+    {'key': 'experience', 'label': '체험', 'icon': '🎨'},
+    {'key': 'culture', 'label': '문화·역사', 'icon': '🏛️'},
+    {'key': 'nature', 'label': '자연', 'icon': '🏞️'},
+  ];
+
+  static const List<Map<String, String>> budgetOptions = [
+    {'key': 'saving', 'label': '알뜰하게'},
+    {'key': 'balance', 'label': '균형있게'},
+    {'key': 'premium', 'label': '여유롭게'},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLockStatus(); // ⭐ 이 안에서 완료되면 step을 survey로 넘김
+  }
+
+  @override
+  void dispose() {
+    _loadingMessageTimer?.cancel();
+    _lockTimer?.cancel();
+    super.dispose();
+  }
+
+  // ⭐ 다이얼로그가 뜨자마자, 최종 확정되기 전까진 checking 화면을 보여줘서 경합(race)을 원천 차단
+  Future<void> _checkLockStatus() async {
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final lastMillis = prefs.getInt(_prefsKey);
+
+    if (!mounted) return;
+
+    if (lastMillis != null) {
+
+      final last = DateTime.fromMillisecondsSinceEpoch(lastMillis);
+      final elapsed = DateTime.now().difference(last);
+      const limit = Duration(hours: 24);
+
+      if (elapsed < limit) {
+
+        setState(() {
+          _lockRemaining = limit - elapsed;
+          step = _AdvisorStep.survey;
+        });
+
+        _startLockTimer();
+
+        return;
+
+      }
+
+    }
+
+    setState(() {
+      _lockRemaining = null;
+      step = _AdvisorStep.survey;
+    });
+
+  }
+
+  void _startLockTimer() {
+
+    _lockTimer?.cancel();
+
+    _lockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+
+        if (_lockRemaining == null || _lockRemaining!.inSeconds <= 1) {
+          _lockRemaining = null;
+          timer.cancel();
+        } else {
+          _lockRemaining = _lockRemaining! - const Duration(seconds: 1);
+        }
+
+      });
+
+    });
+
+  }
+
+  // ⭐ 성공적으로 새로 생성했을 때 저장
+  Future<void> _saveLockTimestamp() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  // ⭐ 서버가 "이미 오늘 썼다"(rate_limited)고 응답할 때도, 남은 시간을 역산해서 로컬에 동기화 저장
+  // -> 다음에 다이얼로그를 다시 열어도 로컬 기준으로 정확히 잠금 상태가 반영됨 (기존 버그의 핵심 원인)
+  Future<void> _syncLockTimestampFromServer(int remainingSeconds) async {
+
+    final elapsedSeconds = 86400 - remainingSeconds;
+
+    final approxOriginalTime = DateTime.now().subtract(Duration(seconds: elapsedSeconds));
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setInt(_prefsKey, approxOriginalTime.millisecondsSinceEpoch);
+
+  }
+
+  String _formatDuration(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _runAgent() async {
+
+    if (_lockRemaining != null) return; // ⭐ 이중 안전장치 (버튼이 null이어도 혹시 몰라 방어)
+
+    setState(() => step = _AdvisorStep.loading);
+
+    _loadingMessageIndex = 0;
+
+    _loadingMessageTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        _loadingMessageIndex = (_loadingMessageIndex + 1) % _loadingMessages.length;
+      });
+
+    });
+
+    try {
+
+      final url = '${dotenv.env['PHP_URL']}AI.php';
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "age": selectedAge,
+          "theme": selectedTheme,
+          "budget": selectedBudget,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      _loadingMessageTimer?.cancel();
+
+      if (data["rate_limited"] == true) {
+
+        final int remaining = data["remaining_seconds"] ?? 0;
+
+        await _syncLockTimestampFromServer(remaining); // ⭐ 핵심 수정: 로컬 저장 동기화
+
+        if (!mounted) return;
+
+        setState(() {
+          _lockRemaining = Duration(seconds: remaining);
+        });
+
+        _startLockTimer();
+
+        if (data["success"] == true) {
+
+          setState(() {
+            resultData = data;
+            step = _AdvisorStep.result;
+          });
+
+        } else {
+
+          setState(() => step = _AdvisorStep.survey);
+
+        }
+
+        return;
+
+      }
+
+      if (data["success"] != true) {
+
+        setState(() {
+          step = _AdvisorStep.error;
+          errorMessage = data["message"] ?? "추천을 불러오지 못했습니다";
+        });
+
+        return;
+
+      }
+
+      await _saveLockTimestamp();
+
+      if (!mounted) return;
+
+      setState(() {
+        resultData = data;
+        step = _AdvisorStep.result;
+        _lockRemaining = const Duration(hours: 24);
+      });
+
+      _startLockTimer();
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      _loadingMessageTimer?.cancel();
+
+      setState(() {
+        step = _AdvisorStep.error;
+        errorMessage = "에러 발생: $e";
+      });
+
+    }
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: _buildStepContent(),
+        ),
+      ),
+    );
+
+  }
+
+  Widget _buildStepContent() {
+
+    switch (step) {
+      case _AdvisorStep.checking:
+        return const SizedBox(
+          key: ValueKey('checking'),
+          height: 120,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      case _AdvisorStep.survey:
+        return _buildSurvey();
+      case _AdvisorStep.loading:
+        return _buildLoading();
+      case _AdvisorStep.result:
+        return _buildResult();
+      case _AdvisorStep.error:
+        return _buildError();
+    }
+
+  }
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    String? icon,
+  }) {
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? widget.primary : const Color(0xFFF7F7F9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? widget.primary : Colors.transparent, width: 1.2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Text(icon, style: const TextStyle(fontSize: 14)),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : Colors.grey.shade700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+  }
+
+  Widget _buildSurvey() {
+
+    final bool locked = _lockRemaining != null;
+
+    return Column(
+      key: const ValueKey('survey'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(color: widget.primary.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(Icons.auto_awesome_rounded, color: widget.primary, size: 26),
+        ),
+
+        const SizedBox(height: 14),
+
+        const Text("여행 취향을 알려주세요", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
+
+        const SizedBox(height: 4),
+
+        Text(
+          "간단한 정보로 더 정확한 지역을 추천해드려요",
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+        ),
+
+        const SizedBox(height: 20),
+
+        Text("나이대", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade600)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: ageOptions.map((o) => _chip(
+            label: o['label']!,
+            selected: selectedAge == o['code'],
+            onTap: locked ? () {} : () => setState(() => selectedAge = o['code']!),
+          )).toList(),
+        ),
+
+        const SizedBox(height: 18),
+
+        Text("여행 테마", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade600)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: themeOptions.map((o) => _chip(
+            label: o['label']!,
+            icon: o['icon'],
+            selected: selectedTheme == o['key'],
+            onTap: locked ? () {} : () => setState(() => selectedTheme = o['key']!),
+          )).toList(),
+        ),
+
+        const SizedBox(height: 18),
+
+        Text("예산 스타일", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade600)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: budgetOptions.map((o) => _chip(
+            label: o['label']!,
+            selected: selectedBudget == o['key'],
+            onTap: locked ? () {} : () => setState(() => selectedBudget = o['key']!),
+          )).toList(),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ⭐ 잠금 상태면 onPressed 자체를 null로 만들어서 완전히 눌리지 않게 처리
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: locked ? null : _runAgent,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: locked ? Colors.grey.shade300 : widget.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            icon: Icon(
+              locked ? Icons.lock_clock_rounded : Icons.auto_awesome_rounded,
+              color: locked ? Colors.grey.shade500 : Colors.white,
+              size: 16,
+            ),
+            label: Text(
+              locked ? "${_formatDuration(_lockRemaining!)} 후 재사용 가능" : "AI 추천 받기",
+              style: TextStyle(color: locked ? Colors.grey.shade500 : Colors.white, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+
+        if (locked) ...[
+
+          const SizedBox(height: 8),
+
+          Center(
+            child: Text(
+              "하루에 한 번만 추천받을 수 있어요",
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontWeight: FontWeight.w500),
+            ),
+          ),
+
+        ],
+
+      ],
+    );
+
+  }
+
+  Widget _buildLoading() {
+
+    return Column(
+      key: const ValueKey('loading'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+
+        const SizedBox(height: 12),
+
+        SizedBox(
+          width: 64, height: 64,
+          child: CircularProgressIndicator(color: widget.primary, strokeWidth: 3),
+        ),
+
+        const SizedBox(height: 20),
+
+        const Text("AI가 분석하고 있어요", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black87)),
+
+        const SizedBox(height: 10),
+
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: Text(
+            _loadingMessages[_loadingMessageIndex],
+            key: ValueKey<int>(_loadingMessageIndex),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+      ],
+    );
+
+  }
+
+  Widget _buildResult() {
+
+    final data = resultData!;
+
+    final RegionInfo? matched = widget.regions.where((r) => r.id == data["recommended_id"]).isNotEmpty
+        ? widget.regions.firstWhere((r) => r.id == data["recommended_id"])
+        : null;
+
+    if (matched == null) {
+      return _buildErrorContent("추천 지역 정보를 찾을 수 없습니다");
+    }
+
+    final String? topSpot = data["top_spot"];
+    final String? themeLabel = data["theme_label"];
+    final String? themeIcon = data["theme_icon"];
+    final String? ageLabel = data["age_label"];
+    final String? bestWeekday = data["best_weekday"];
+    final Map<String, dynamic>? breakdown = data["score_breakdown"];
+    final String comment = data["comment"] ?? "";
+
+    return SingleChildScrollView(
+      key: const ValueKey('result'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(color: widget.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 12, color: widget.primary),
+                const SizedBox(width: 4),
+                Text("${ageLabel ?? ''} 맞춤 추천", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: widget.primary)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Text(matched.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.black87)),
+              if (themeIcon != null) ...[
+                const SizedBox(width: 8),
+                Text(themeIcon, style: const TextStyle(fontSize: 20)),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: [
+              if (themeLabel != null) _InfoTag(icon: Icons.style_rounded, label: "$themeLabel 여행 강세"),
+              if (topSpot != null && topSpot.isNotEmpty) _InfoTag(icon: Icons.place_rounded, label: topSpot),
+              if (bestWeekday != null) _InfoTag(icon: Icons.event_rounded, label: "$bestWeekday요일 추천"),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          if (_lockRemaining != null)
+
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_clock_rounded, size: 12, color: Colors.grey.shade500),
+                    const SizedBox(width: 4),
+                    Text(
+                      "다음 추천까지 ${_formatDuration(_lockRemaining!)}",
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFFF7F7F9), borderRadius: BorderRadius.circular(14)),
+            child: Text(comment, style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.5, fontWeight: FontWeight.w500)),
+          ),
+
+          if (breakdown != null) ...[
+
+            const SizedBox(height: 14),
+
+            Row(
+              children: [
+                Expanded(child: _ScoreBar(label: "취향 적합도", value: (breakdown["theme_match"] ?? 0).toDouble(), color: widget.primary)),
+                const SizedBox(width: 6),
+                Expanded(child: _ScoreBar(label: "연령대 적합도", value: (breakdown["age_match"] ?? 0).toDouble(), color: Colors.blueAccent)),
+                const SizedBox(width: 6),
+                Expanded(child: _ScoreBar(label: "예산 적합도", value: (breakdown["budget_fit"] ?? 0).toDouble(), color: Colors.teal)),
+              ],
+            ),
+
+          ],
+
+          const SizedBox(height: 22),
+
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(widget.pageContext, MaterialPageRoute(builder: (context) => InformationPage(regionName: matched.name)));
+              },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(color: widget.primary.withOpacity(0.4)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text('${matched.name} 둘러보기', style: TextStyle(color: widget.primary, fontWeight: FontWeight.w700)),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  widget.pageContext,
+                  MaterialPageRoute(
+                    settings: const RouteSettings(name: 'room'),
+                    builder: (context) => RoomPage(userId: widget.userId, roomTable: matched.id, roomTitle: matched.name),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('채팅방 입장', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ),
+
+        ],
+      ),
+    );
+
+  }
+
+  Widget _buildError() => _buildErrorContent(errorMessage);
+
+  Widget _buildErrorContent(String message) {
+
+    return Column(
+      key: const ValueKey('error'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+
+        Icon(Icons.error_outline_rounded, size: 48, color: Colors.grey.shade300),
+        const SizedBox(height: 12),
+        Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 20),
+
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text("닫기", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => setState(() => step = _AdvisorStep.survey),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text("다시 시도", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+
+      ],
     );
 
   }

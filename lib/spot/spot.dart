@@ -5,50 +5,51 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'spot2.dart';
 
 class SpotPage extends StatefulWidget {
-
   final String regionName;
-
   const SpotPage({super.key, required this.regionName});
-
   @override
   State<SpotPage> createState() => _SpotPageState();
 }
 
-enum _TopTab { crowd, hub }
-enum _CrowdTab { crowded, normal, comfortable }
 enum _HubTab { lodging, leisure, shopping, tour }
 
 class _SpotPageState extends State<SpotPage> {
 
   static const Color primary = Color(0xFFFF7A00);
 
-  late Future<_SpotResult> _spotFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
+  late Future<List<String>> _signguCdListFuture;
 
   Future<List<Map<String, dynamic>>>? _hubFuture;
 
-  _TopTab selectedTopTab = _TopTab.crowd;
-
-  _CrowdTab selectedCrowdTab = _CrowdTab.crowded;
-
-  _HubTab selectedHubTab = _HubTab.lodging;
+  _HubTab selectedHubTab = _HubTab.tour;
 
   @override
   void initState() {
     super.initState();
-    _spotFuture = _fetchSpots();
+    _signguCdListFuture = _fetchSignguCdList();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   String _lastMonthYm() {
     final now = DateTime.now();
-    final lastMonthDate = DateTime(now.year, now.month - 1, 1);
+    final lastMonthDate = DateTime(now.year, now.month - 2, 1);
     final y = lastMonthDate.year.toString();
     final m = lastMonthDate.month.toString().padLeft(2, '0');
     return "$y$m";
   }
 
-  Future<_SpotResult> _fetchSpots() async {
+  // ⭐ api_people.php 제거 -> information2.php의 signguCd 필드만 사용 (천안처럼 쉼표로 여러 개인 경우 분리)
+  Future<List<String>> _fetchSignguCdList() async {
 
-    final url = '${dotenv.env['PHP_URL']}api_people.php?regionname=${Uri.encodeComponent(widget.regionName)}';
+    final url = '${dotenv.env['PHP_URL']}information.php?regionname=${Uri.encodeComponent(widget.regionName)}';
 
     final response = await http.get(Uri.parse(url));
 
@@ -58,207 +59,79 @@ class _SpotPageState extends State<SpotPage> {
 
     final data = jsonDecode(response.body);
 
-    if (data['error'] != null) {
-      throw Exception(data['error']);
+    if (data['success'] != true) {
+      throw Exception(data['error'] ?? '데이터 로드 실패');
     }
 
-    final String signguCd = _extractSignguCd(data);
+    final String raw = (data['signguCd'] ?? '').toString();
 
-    final itemsContainer = data['response']?['body']?['items'];
-
-    if (itemsContainer == null || itemsContainer is String) {
-      return _SpotResult(spots: [], signguCd: signguCd);
-    }
-
-    final items = itemsContainer['item'];
-
-    if (items == null) {
-      return _SpotResult(spots: [], signguCd: signguCd);
-    }
-
-    final List<dynamic> list = (items is List) ? items : [items];
-
-    final spots = list.map((item) {
-
-      return {
-        "name": (item['tAtsNm'] ?? '').toString(),
-        "rate": (item['cnctrRate'] ?? '').toString(),
-        "signguCd": (item['signguCd'] ?? '').toString(), // ⭐ 항목별 signguCd 보존
-      };
-
-    }).toList();
-
-    spots.sort((a, b) {
-
-      final rateA = double.tryParse(a["rate"] ?? '') ?? 0;
-      final rateB = double.tryParse(b["rate"] ?? '') ?? 0;
-
-      return rateB.compareTo(rateA);
-
-    });
-
-    return _SpotResult(
-      spots: List<Map<String, String>>.from(spots),
-      signguCd: signguCd,
-    );
+    return raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
   }
 
-  String _extractSignguCd(Map<String, dynamic> data) {
-
-    final itemsContainer = data['response']?['body']?['items'];
-
-    if (itemsContainer == null || itemsContainer is String) return '';
-
-    final items = itemsContainer['item'];
-
-    if (items == null) return '';
-
-    final List<dynamic> list = (items is List) ? items : [items];
-
-    if (list.isEmpty) return '';
-
-    return (list.first['signguCd'] ?? '').toString();
-
-  }
-
-  Color _rateColor(double rate) {
-    if (rate >= 70) return Colors.redAccent;
-    if (rate >= 40) return const Color(0xFFFFA000);
-    return Colors.green;
-  }
-
-  String _rateLabel(double rate) {
-    if (rate >= 70) return "혼잡";
-    if (rate >= 40) return "보통";
-    return "쾌적";
-  }
-
-  List<Map<String, String>> _filterByCrowdTab(List<Map<String, String>> spots) {
-
-    return spots.where((spot) {
-
-      final double rate = double.tryParse(spot["rate"] ?? '') ?? 0;
-
-      final String label = _rateLabel(rate);
-
-      switch (selectedCrowdTab) {
-        case _CrowdTab.crowded:
-          return label == "혼잡";
-        case _CrowdTab.normal:
-          return label == "보통";
-        case _CrowdTab.comfortable:
-          return label == "쾌적";
-      }
-
-    }).toList();
-
-  }
-
-  // ⭐ 기초 중심(hub) 데이터 조회 - 크라우드 데이터의 signguCd 전부 사용, 이름 중복 제외
-  Future<List<Map<String, dynamic>>> _fetchHubSpots(_SpotResult crowdResult) async {
-
-    final Set<String> signguCds = crowdResult.spots
-        .map((s) => s['signguCd'] ?? '')
-        .where((e) => e.isNotEmpty)
-        .toSet();
-
-    if (signguCds.isEmpty && crowdResult.signguCd.isNotEmpty) {
-      signguCds.add(crowdResult.signguCd);
-    }
-
+  Future<List<Map<String, dynamic>>> _fetchHubSpots(List<String> signguCdList) async {
     final baseYm = _lastMonthYm();
-
     final Set<String> seenNames = {};
-
     final List<Map<String, dynamic>> all = [];
-
-    for (final cd in signguCds) {
-
+    for (final cd in signguCdList) {
       try {
-
         final url = '${dotenv.env['PHP_URL']}api_zoongsim.php'
             '?areaCd=44'
             '&signguCd=${Uri.encodeComponent(cd)}'
             '&baseYm=$baseYm'
             '&numOfRows=1000';
-
         final response = await http.get(Uri.parse(url));
-
         if (response.statusCode != 200) continue;
-
         final data = jsonDecode(response.body);
-
         if (data['success'] != true) continue;
-
         final itemsContainer = data['data']?['response']?['body']?['items'];
-
         if (itemsContainer == null || itemsContainer is String) continue;
-
         final rawItems = itemsContainer['item'];
-
         if (rawItems == null) continue;
-
         final List<dynamic> items = (rawItems is List) ? rawItems : [rawItems];
-
         for (final raw in items) {
-
           final item = Map<String, dynamic>.from(raw);
-
           final String name = (item['hubTatsNm'] ?? '').toString();
-
           if (name.isEmpty) continue;
-
-          if (seenNames.contains(name)) continue; // signguCd 여러 개 순회 시 중복 제외
-
+          if (seenNames.contains(name)) continue;
           seenNames.add(name);
-
           all.add(item);
-
         }
-
       } catch (e) {
         // 개별 signguCd 실패는 무시하고 계속 진행
       }
-
     }
-
     return all;
-
   }
 
-  void _ensureHubFuture(_SpotResult crowdResult) {
-    _hubFuture ??= _fetchHubSpots(crowdResult);
+  void _ensureHubFuture(List<String> signguCdList) {
+    _hubFuture ??= _fetchHubSpots(signguCdList);
   }
 
-  // ⭐ hubCtgryMclsNm -> 4개 탭 분류
   _HubTab? _classifyHub(String mclsNm) {
-
     if (mclsNm == '숙박') return _HubTab.lodging;
-
     if (mclsNm == '레저스포츠') return _HubTab.leisure;
-
     if (mclsNm == '쇼핑') return _HubTab.shopping;
-
     if (mclsNm.endsWith('관광')) return _HubTab.tour;
-
-    return null; // 4개 분류에 해당 안 되면 표시 안 함
-
+    return null;
   }
 
-  List<Map<String, dynamic>> _filterByHubTab(List<Map<String, dynamic>> items) {
+  List<Map<String, dynamic>> _filterBySearch(List<Map<String, dynamic>> items) {
+
+    final query = _searchQuery.trim().toLowerCase();
 
     final filtered = items.where((item) {
 
-      final String mclsNm = (item['hubCtgryMclsNm'] ?? '').toString();
+      final String name = (item['hubTatsNm'] ?? '').toString().toLowerCase();
 
-      return _classifyHub(mclsNm) == selectedHubTab;
+      return name.contains(query);
 
     }).toList();
 
     filtered.sort((a, b) {
 
       final rankA = int.tryParse((a['hubRank'] ?? '999').toString()) ?? 999;
+
       final rankB = int.tryParse((b['hubRank'] ?? '999').toString()) ?? 999;
 
       return rankA.compareTo(rankB);
@@ -269,28 +142,40 @@ class _SpotPageState extends State<SpotPage> {
 
   }
 
-  void _goToSpot2(String name, String? signguCd, String fallbackSignguCd) {
+  List<Map<String, dynamic>> _filterByHubTab(List<Map<String, dynamic>> items) {
+    final filtered = items.where((item) {
+      final String mclsNm = (item['hubCtgryMclsNm'] ?? '').toString();
+      return _classifyHub(mclsNm) == selectedHubTab;
+    }).toList();
+    filtered.sort((a, b) {
+      final rankA = int.tryParse((a['hubRank'] ?? '999').toString()) ?? 999;
+      final rankB = int.tryParse((b['hubRank'] ?? '999').toString()) ?? 999;
+      return rankA.compareTo(rankB);
+    });
+    return filtered;
+  }
 
+  // ⭐ spot2.dart -> spot3.dart로 변경
+  void _goToSpot3(Map<String, dynamic> item) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => Spot2Page(
           regionName: widget.regionName,
-          signguCd: (signguCd != null && signguCd.isNotEmpty) ? signguCd : fallbackSignguCd,
-          name: name,
+          hubTatsNm: (item['hubTatsNm'] ?? '').toString(),
+          hubCtgryLclsNm: (item['hubCtgryLclsNm'] ?? '').toString(),
+          hubCtgryMclsNm: (item['hubCtgryMclsNm'] ?? '').toString(),
+          mapX: (item['mapX'] ?? '').toString(),
+          mapY: (item['mapY'] ?? '').toString(),
         ),
       ),
     );
-
   }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
       backgroundColor: const Color(0xFFF7F7F9),
-
       appBar: AppBar(
         title: Text(
           '${widget.regionName} 관광지 목록',
@@ -302,17 +187,13 @@ class _SpotPageState extends State<SpotPage> {
         surfaceTintColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.black87),
       ),
-
-      body: FutureBuilder<_SpotResult>(
-        future: _spotFuture,
+      body: FutureBuilder<List<String>>(
+        future: _signguCdListFuture,
         builder: (context, snapshot) {
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: primary));
           }
-
           if (snapshot.hasError) {
-
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -323,375 +204,178 @@ class _SpotPageState extends State<SpotPage> {
                 ],
               ),
             );
-
           }
-
-          final result = snapshot.data!;
-
-          if (selectedTopTab == _TopTab.hub) {
-            _ensureHubFuture(result);
-          }
-
+          final signguCdList = snapshot.data ?? [];
+          _ensureHubFuture(signguCdList);
           return Column(
             children: [
+              const SizedBox(height: 12),
 
-              // ===== 상위 탭: 혼잡도 기반 / 기초 중심 =====
+              // ⭐ 검색창 (탭과 무관하게 전체 검색)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _PillTabButton(
-                        label: "혼잡도 기반 스팟",
-                        color: Color(0xFFFFA000),
-                        selected: selectedTopTab == _TopTab.crowd,
-                        onTap: () => setState(() => selectedTopTab = _TopTab.crowd),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                    decoration: InputDecoration(
+                      hintText: "관광지 이름으로 검색",
+                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                      prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 20),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                        icon: Icon(Icons.close_rounded, color: Colors.grey.shade400, size: 18),
+                        onPressed: () => setState(() {
+                          _searchController.clear();
+                          _searchQuery = "";
+                        }),
                       ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _PillTabButton(
-                        label: "카테고리 스팟",
-                        color: Color(0xFFFFA000),
-                        selected: selectedTopTab == _TopTab.hub,
-                        onTap: () => setState(() => selectedTopTab = _TopTab.hub),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
 
               const SizedBox(height: 10),
 
-              Expanded(
-                child: selectedTopTab == _TopTab.crowd
-                    ? _buildCrowdTabContent(result)
-                    : _buildHubTabContent(result),
-              ),
+              // ⭐ 검색 중엔 탭 버튼 자체를 숨김 (탭 분류가 의미 없어지므로)
+              if (_searchQuery.trim().isEmpty)
 
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _PillTabButton(
+                          label: "관광",
+                          color: primary,
+                          selected: selectedHubTab == _HubTab.tour,
+                          onTap: () => setState(() => selectedHubTab = _HubTab.tour),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _PillTabButton(
+                          label: "레저스포츠",
+                          color: primary,
+                          selected: selectedHubTab == _HubTab.leisure,
+                          onTap: () => setState(() => selectedHubTab = _HubTab.leisure),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _PillTabButton(
+                          label: "쇼핑",
+                          color: primary,
+                          selected: selectedHubTab == _HubTab.shopping,
+                          onTap: () => setState(() => selectedHubTab = _HubTab.shopping),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _PillTabButton(
+                          label: "숙박",
+                          color: primary,
+                          selected: selectedHubTab == _HubTab.lodging,
+                          onTap: () => setState(() => selectedHubTab = _HubTab.lodging),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 8),
+              Expanded(
+                child: _buildHubTabContent(),
+              ),
             ],
           );
-
         },
       ),
-
     );
   }
 
-  Widget _buildCrowdTabContent(_SpotResult result) {
+  Widget _buildHubTabContent() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _hubFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: primary));
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text("정보를 불러올 수 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500)),
+          );
+        }
+        final all = snapshot.data ?? [];
 
-    final filteredSpots = _filterByCrowdTab(result.spots);
+        // ⭐ 검색어가 있으면 탭 분류 무시하고 전체에서 검색, 없으면 기존 탭 필터링
+        final filtered = _searchQuery.trim().isNotEmpty
+            ? _filterBySearch(all)
+            : _filterByHubTab(all);
 
-    return Column(
-      children: [
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: _PillTabButton(
-                  label: "혼잡",
-                  color: Colors.redAccent,
-                  selected: selectedCrowdTab == _CrowdTab.crowded,
-                  onTap: () => setState(() => selectedCrowdTab = _CrowdTab.crowded),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _PillTabButton(
-                  label: "보통",
-                  color: const Color(0xFFFFA000),
-                  selected: selectedCrowdTab == _CrowdTab.normal,
-                  onTap: () => setState(() => selectedCrowdTab = _CrowdTab.normal),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _PillTabButton(
-                  label: "쾌적",
-                  color: Colors.green,
-                  selected: selectedCrowdTab == _CrowdTab.comfortable,
-                  onTap: () => setState(() => selectedCrowdTab = _CrowdTab.comfortable),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        Expanded(
-
-          child: filteredSpots.isEmpty
-              ? Center(
+        if (filtered.isEmpty) {
+          return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.travel_explore_rounded, size: 56, color: Colors.grey.shade300),
                 const SizedBox(height: 12),
-                Text("해당하는 관광지가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500)),
+                Text("해당하는 장소가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500)),
               ],
             ),
-          )
-              : ListView.separated(
-
-            padding: const EdgeInsets.all(16),
-
-            itemCount: filteredSpots.length,
-
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-
-            itemBuilder: (context, index) {
-
-              final spot = filteredSpots[index];
-
-              final String name = spot["name"] ?? "이름 없음";
-
-              final double rate = double.tryParse(spot["rate"] ?? '') ?? 0;
-
-              final Color color = _rateColor(rate);
-
-              return InkWell(
-
-                borderRadius: BorderRadius.circular(18),
-
-                onTap: () => _goToSpot2(name, spot["signguCd"], result.signguCd),
-
-                child: Container(
-
-                  padding: const EdgeInsets.all(16),
-
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
-                  ),
-
-                  child: Row(
-                    children: [
-
-                      Container(
-                        width: 44, height: 44,
-                        decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-                        child: Icon(Icons.place_rounded, color: color, size: 22),
-                      ),
-
-                      const SizedBox(width: 14),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-
-                            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
-
-                            const SizedBox(height: 4),
-
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-                                  child: Text(_rateLabel(rate), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-                                ),
-                                const SizedBox(width: 6),
-                                Text("혼잡도 ${rate.toStringAsFixed(1)}%", style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-                              ],
-                            ),
-
-                          ],
-                        ),
-                      ),
-
-                      Text("${rate.toStringAsFixed(0)}%", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-
-                      const SizedBox(width: 6),
-
-                      Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
-
-                    ],
-                  ),
-
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: filtered.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final item = filtered[index];
+            final String name = (item['hubTatsNm'] ?? '').toString();
+            return InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => _goToSpot3(item),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
                 ),
-
-              );
-
-            },
-
-          ),
-
-        ),
-
-      ],
-    );
-
-  }
-
-  Widget _buildHubTabContent(_SpotResult crowdResult) {
-
-    return Column(
-      children: [
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: _PillTabButton(
-                  label: "숙박",
-                  color: primary,
-                  selected: selectedHubTab == _HubTab.lodging,
-                  onTap: () => setState(() => selectedHubTab = _HubTab.lodging),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _PillTabButton(
-                  label: "레저스포츠",
-                  color: primary,
-                  selected: selectedHubTab == _HubTab.leisure,
-                  onTap: () => setState(() => selectedHubTab = _HubTab.leisure),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _PillTabButton(
-                  label: "쇼핑",
-                  color: primary,
-                  selected: selectedHubTab == _HubTab.shopping,
-                  onTap: () => setState(() => selectedHubTab = _HubTab.shopping),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _PillTabButton(
-                  label: "관광",
-                  color: primary,
-                  selected: selectedHubTab == _HubTab.tour,
-                  onTap: () => setState(() => selectedHubTab = _HubTab.tour),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        Expanded(
-
-          child: FutureBuilder<List<Map<String, dynamic>>>(
-
-            future: _hubFuture,
-
-            builder: (context, snapshot) {
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator(color: primary));
-              }
-
-              if (snapshot.hasError) {
-                return Center(
-                  child: Text("정보를 불러올 수 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500)),
-                );
-              }
-
-              final all = snapshot.data ?? [];
-
-              final filtered = _filterByHubTab(all);
-
-              if (filtered.isEmpty) {
-
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.travel_explore_rounded, size: 56, color: Colors.grey.shade300),
-                      const SizedBox(height: 12),
-                      Text("해당하는 장소가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                );
-
-              }
-
-              return ListView.separated(
-
-                padding: const EdgeInsets.all(16),
-
-                itemCount: filtered.length,
-
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-
-                itemBuilder: (context, index) {
-
-                  final item = filtered[index];
-
-                  final String name = (item['hubTatsNm'] ?? '').toString();
-
-                  final String itemSignguCd = (item['signguCd'] ?? '').toString();
-
-                  return InkWell(
-
-                    borderRadius: BorderRadius.circular(18),
-
-                    onTap: () => _goToSpot2(name, itemSignguCd, crowdResult.signguCd),
-
-                    child: Container(
-
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
-                      ),
-
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
-                          ),
-                          Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
-                        ],
-                      ),
-
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
                     ),
-
-                  );
-
-                },
-
-              );
-
-            },
-
-          ),
-
-        ),
-
-      ],
+                    Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
-
   }
-
-}
-
-class _SpotResult {
-  final List<Map<String, String>> spots;
-  final String signguCd;
-  _SpotResult({required this.spots, required this.signguCd});
 }
 
 class _PillTabButton extends StatelessWidget {
-
   final String label;
   final Color color;
   final bool selected;
   final VoidCallback onTap;
-
   const _PillTabButton({
     required this.label,
     required this.color,
@@ -721,5 +405,4 @@ class _PillTabButton extends StatelessWidget {
       ),
     );
   }
-
 }

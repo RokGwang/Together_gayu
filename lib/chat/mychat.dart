@@ -626,6 +626,10 @@ class _RoomCard extends StatelessWidget {
 
       lastMessage = "위치를 공유했습니다";
 
+    } else if (rawLastMessage != null && rawLastMessage.startsWith("SPOT|")) {
+
+      lastMessage = "관광지를 보냈습니다";
+
     } else if (lastMessageType == "emoji") { // ⭐ 추가
 
       final String? label = room["last_message_label"];

@@ -9,6 +9,7 @@ import 'spot/information.dart'; // 이 줄이 없으면 추가하세요.
 import 'dart:ui';
 import 'up.dart';
 import 'dart:async';
+import 'tab_widget/festival_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ===== 지역 정보 모델 =====
@@ -510,6 +511,26 @@ class _IntroPageState extends State<IntroPage> {
 
   }
 
+  void _openTop10() {
+    showDialog(
+      context: context,
+      builder: (_) => _Top10DialogContent(
+        pageContext: context,
+        primary: primary,
+      ),
+    );
+  }
+
+  void _openFestivalCalendar() {
+    showDialog(
+      context: context,
+      builder: (_) => FestivalCalendarDialog(
+        pageContext: context,
+        primary: primary,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -676,10 +697,9 @@ class _IntroPageState extends State<IntroPage> {
               const SizedBox(height: 28),
 
 // ===== AI 여행 동행 어드바이저 =====
+              // ===== 상단 아이콘 + 타이틀 (박스 밖) =====
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
                   Container(
                     width: 52,
                     height: 52,
@@ -692,79 +712,147 @@ class _IntroPageState extends State<IntroPage> {
                     ),
                     child: const Icon(Icons.travel_explore_rounded, color: Colors.white, size: 26),
                   ),
-
                   const SizedBox(width: 12),
-
-                  Expanded(
-
-                    child: Container(
-
-                      padding: const EdgeInsets.all(16),
-
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
-                        ],
-                      ),
-
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-
-                          const Text(
-                            "오늘은 어디로 떠나볼까요?",
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.black87),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          Text(
-                            "실시간 관광 빅데이터로 지금 동행 구하기 좋은 지역을 골라드려요",
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _openAdvisor,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: primary,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
-                              label: const Text(
-                                "AI 관광 지역 추천",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
-                              ),
-                            ),
-                          ),
-
-                        ],
-                      ),
-
+                  const Expanded(
+                    child: Text(
+                      "오늘은 어디로 떠나볼까요?",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black87),
                     ),
-
                   ),
-
                 ],
               ),
 
+              const SizedBox(height: 14),
+
+              // ===== 말풍선 1: AI 관광 지역 추천 =====
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "실시간 관광 빅데이터로 지금 동행 구하기 좋은 지역을 골라드려요",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _openAdvisor,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
+                        label: const Text(
+                          "AI 관광 지역 추천",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ===== 말풍선 2: 인기 관광지 TOP 10 =====
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "지금 가장 많은 사람이 찾는 곳을 확인해보세요",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _openTop10,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 16),
+                        label: const Text(
+                          "인기 관광지 TOP 10",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ===== 말풍선 3: 축제 일정 달력 =====
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "충청남도 전체 축제를 달력으로 확인하세요",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _openFestivalCalendar,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 16),
+                        label: const Text(
+                          "축제 일정 달력",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 8),
-
             ],
-
           ),
-
         ),
-
       ),
-
       bottomNavigationBar: BottomWidget(
         userId: widget.userId,
       ),
@@ -846,88 +934,6 @@ class _MapPin extends StatelessWidget {
 
 }
 
-class _RegionCard extends StatelessWidget {
-
-  final String title;
-
-  final IconData icon;
-
-  final Color color;
-
-  final VoidCallback onTap;
-
-  const _RegionCard({
-
-    required this.title,
-
-    required this.icon,
-
-    required this.color,
-
-    required this.onTap,
-
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return InkWell(
-
-      borderRadius: BorderRadius.circular(16),
-
-      onTap: onTap,
-
-      child: Container(
-
-        padding: const EdgeInsets.all(12),
-
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 17),
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: Colors.black87,
-              ),
-            ),
-
-          ],
-        ),
-
-      ),
-
-    );
-
-  }
-
-}
 class _InfoTag extends StatelessWidget {
 
   final IconData icon;
@@ -1737,6 +1743,352 @@ class _AdvisorDialogContentState extends State<_AdvisorDialogContent> {
         ),
 
       ],
+    );
+
+  }
+
+}
+class _Top10DialogContent extends StatefulWidget {
+
+  final BuildContext pageContext;
+
+  final Color primary;
+
+  const _Top10DialogContent({
+    required this.pageContext,
+    required this.primary,
+  });
+
+  @override
+  State<_Top10DialogContent> createState() => _Top10DialogContentState();
+
+}
+
+class _Top10DialogContentState extends State<_Top10DialogContent> {
+
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fetchTop10();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTop10() async {
+
+    final url = '${dotenv.env['PHP_URL']}top10.php';
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode != 200) {
+      throw Exception('데이터 로드 실패');
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? '데이터 로드 실패');
+    }
+
+    final List<dynamic> items = data['items'] ?? [];
+
+    return items.map((e) => Map<String, dynamic>.from(e)).toList();
+
+  }
+
+  // ⭐ 순위별 메달 색상
+  Color _rankColor(int rank) {
+
+    if (rank == 1) return const Color(0xFFFFC107); // 골드
+    if (rank == 2) return const Color(0xFFB0BEC5); // 실버
+    if (rank == 3) return const Color(0xFFCD7F32); // 브론즈
+
+    return Colors.grey.shade400;
+
+  }
+
+  void _goToInformation(BuildContext dialogContext, String regionName) {
+
+    // ⭐ 팝업(다이얼로그)을 먼저 닫고, 그 다음 information.dart로 이동
+    // -> 뒤로가기를 눌러 mainview.dart로 복귀했을 때 팝업이 다시 뜨지 않도록 함
+    Navigator.pop(dialogContext);
+
+    Navigator.push(
+      widget.pageContext,
+      MaterialPageRoute(builder: (context) => InformationPage(regionName: regionName)),
+    );
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F7F9),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+
+            // ===== 헤더 (그라데이션) =====
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 20, 12, 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [widget.primary, widget.primary.withOpacity(0.75)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Row(
+                children: [
+
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 24),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("인기 관광지 TOP 10", style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                        SizedBox(height: 2),
+                        Text("지금 가장 많이 찾는 관광지예요", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+
+                ],
+              ),
+            ),
+
+            // ===== 목록 =====
+            Flexible(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _future,
+                builder: (context, snapshot) {
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+
+                    return Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator(color: widget.primary)),
+                    );
+
+                  }
+
+                  if (snapshot.hasError) {
+
+                    return Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline_rounded, size: 48, color: Colors.grey.shade300),
+                            const SizedBox(height: 12),
+                            Text("정보를 불러올 수 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    );
+
+                  }
+
+                  final items = snapshot.data ?? [];
+
+                  if (items.isEmpty) {
+
+                    return Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Center(
+                        child: Text("표시할 데이터가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500)),
+                      ),
+                    );
+
+                  }
+
+                  return ListView.separated(
+
+                    shrinkWrap: true,
+
+                    padding: const EdgeInsets.all(16),
+
+                    itemCount: items.length,
+
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+
+                    itemBuilder: (context, index) {
+
+                      final item = items[index];
+
+                      final int rank = item['rank'] ?? (index + 1);
+                      final String regionName = (item['regionname'] ?? '').toString();
+                      final String spot = (item['spot'] ?? '').toString();
+                      final int people = item['people'] ?? 0;
+                      final String image = (item['image'] ?? '').toString();
+
+                      return InkWell(
+
+                        borderRadius: BorderRadius.circular(18),
+
+                        onTap: () => _goToInformation(context, regionName),
+
+                        child: Container(
+
+                          padding: const EdgeInsets.all(12),
+
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                            ],
+                          ),
+
+                          child: Row(
+                            children: [
+
+                              // ===== 이미지 + 순위 뱃지 =====
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: Image.network(
+                                      image,
+                                      width: 76,
+                                      height: 76,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        width: 76,
+                                        height: 76,
+                                        color: Colors.grey.shade100,
+                                        child: Icon(Icons.image_not_supported_rounded, color: Colors.grey.shade300, size: 24),
+                                      ),
+                                    ),
+                                  ),
+
+                                  Positioned(
+                                    top: -6,
+                                    left: -6,
+                                    child: Container(
+                                      width: 26,
+                                      height: 26,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: _rankColor(rank),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2)),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        "$rank",
+                                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                  ),
+
+                                ],
+                              ),
+
+                              const SizedBox(width: 14),
+
+                              // ===== 정보 =====
+                              Expanded(
+
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+
+                                    Row(
+                                      children: [
+
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: widget.primary.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            regionName,
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: widget.primary),
+                                          ),
+                                        ),
+
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 6),
+
+                                    Text(
+                                      spot,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.black87),
+                                    ),
+
+                                    const SizedBox(height: 4),
+
+                                    Row(
+                                      children: [
+                                        Icon(Icons.groups_rounded, size: 13, color: Colors.grey.shade400),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          "방문객 : ${people}천명",
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    ),
+
+                                  ],
+                                ),
+
+                              ),
+
+                              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300),
+
+                            ],
+                          ),
+
+                        ),
+
+                      );
+
+                    },
+
+                  );
+
+                },
+              ),
+            ),
+
+          ],
+        ),
+      ),
     );
 
   }

@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../map_view.dart';
+import '../tab_widget/festival_calendar.dart';
 
 class ContentPage extends StatefulWidget {
 
@@ -588,7 +589,63 @@ class _ContentPageState extends State<ContentPage> {
           Expanded(
             child: selectedTab == _ContentTopTab.content
                 ? _buildContentList()
-                : _buildFestivalList(),
+                : Column(
+              children: [
+
+                // ===== 축제 일정 달력 버튼 =====
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => FestivalCalendarDialog(
+                          pageContext: context,
+                          primary: primary,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [primary, primary.withOpacity(0.75)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: primary.withOpacity(0.25), blurRadius: 10, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+
+                          const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 20),
+
+                          const SizedBox(width: 10),
+
+                          const Expanded(
+                            child: Text(
+                              "축제 일정 달력으로 보기",
+                              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+
+                          const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 20),
+
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                Expanded(child: _buildFestivalList()),
+
+              ],
+            ),
           ),
 
         ],

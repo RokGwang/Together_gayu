@@ -32,6 +32,14 @@ class _ChatPageState extends State<ChatPage> {
 
   static const String baseUrl = "http://35.216.34.21/together";
 
+  // ⭐ roomInfo["region"](영문 id) -> 한글 지역명 매핑 (mainview.dart의 RegionInfo와 동일)
+  static const Map<String, String> regionNameMap = {
+    "cheonan": "천안", "asan": "아산", "dangjin": "당진", "seosan": "서산",
+    "taean": "태안", "yesan": "예산", "hongseong": "홍성", "cheongyang": "청양",
+    "gongju": "공주", "boryeong": "보령", "buyeo": "부여", "seocheon": "서천",
+    "nonsan": "논산", "gyeryong": "계룡", "geumsan": "금산",
+  };
+
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
   final TextEditingController amountController = TextEditingController();
@@ -634,24 +642,19 @@ class _ChatPageState extends State<ChatPage> {
   // =========================
 
   Future<void> showAttachmentSheet() async {
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       useRootNavigator: false,
       builder: (_) => Container(
-
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
-
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-
             Container(
               width: 40,
               height: 4,
@@ -661,7 +664,6 @@ class _ChatPageState extends State<ChatPage> {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-
             Row(
               children: [
                 Expanded(
@@ -687,8 +689,12 @@ class _ChatPageState extends State<ChatPage> {
                     },
                   ),
                 ),
-                const SizedBox(width: 12), // ⭐ 추가
-                Expanded( // ⭐ 추가
+              ],
+            ),
+            const SizedBox(height: 12), // ⭐ 추가
+            Row( // ⭐ 추가
+              children: [
+                Expanded(
                   child: _AttachTile(
                     icon: Icons.local_taxi_rounded,
                     label: "택시비 산출",
@@ -699,16 +705,24 @@ class _ChatPageState extends State<ChatPage> {
                     },
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AttachTile(
+                    icon: Icons.landscape_rounded,
+                    label: "관광지",
+                    color: primary,
+                    onTap: () {
+                      Navigator.pop(context);
+                      showSpotDialog();
+                    },
+                  ),
+                ),
               ],
             ),
-
           ],
         ),
-
       ),
-
     );
-
   }
 
   // =========================
@@ -925,6 +939,38 @@ class _ChatPageState extends State<ChatPage> {
 
       },
 
+    );
+
+  }
+
+  // =========================
+  // 관광지 (spot 계열 축소판)
+  // =========================
+  void showSpotDialog() {
+
+    if (roomInfo == null) return;
+
+    final String regionId = (roomInfo!["region"] ?? "").toString();
+
+    final String regionName = regionNameMap[regionId] ?? regionId;
+
+    if (regionName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("지역 정보를 확인할 수 없습니다")),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _SpotListDialogContent(
+        regionName: regionName,
+        roomId: widget.roomId,
+        userId: widget.userId,
+        primary: primary,
+        onSent: () => loadMessages(initial: false),
+      ),
     );
 
   }
@@ -1342,7 +1388,7 @@ class _ChatPageState extends State<ChatPage> {
                               try {
 
                                 await http.post(
-                                  Uri.parse("${dotenv.env['PHP_URL']}taxi_fare_message.php"),
+                                  Uri.parse("${dotenv.env['PHP_URL']}chat_taxi_fare_message.php"),
                                   headers: {"Content-Type": "application/json"},
                                   body: jsonEncode({
                                     "room_id": widget.roomId,
@@ -2519,6 +2565,10 @@ class _ChatPageState extends State<ChatPage> {
 
   }
 
+  bool isSpotMessage(dynamic msg) {
+    return (msg["message"] ?? "").toString().startsWith("SPOT|");
+  }
+
   bool isSameDate(String? a, String? b) {
 
     if (a == null || b == null) return false;
@@ -2962,6 +3012,7 @@ class _ChatPageState extends State<ChatPage> {
 
                   final bool isSettlement = isSettlementMessage(msg);
                   final bool isTaxiFare = isTaxiFareMessage(msg);
+                  final bool isSpotInfo = isSpotMessage(msg); // ⭐ 추가
 
                   final prevMsg = reversedIndex > 0 ? messages[reversedIndex - 1] : null;
 
@@ -3043,6 +3094,93 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
 
+                      ],
+                    );
+
+                  }
+
+                  // ===== 관광지 정보 메시지 (전용 카드) =====
+                  if (isSpotInfo) {
+
+                    final parts = (msg["message"] as String).split("|");
+
+                    final name = parts.length > 1 ? parts[1] : "";
+                    final catL = parts.length > 2 ? parts[2] : "";
+                    final catM = parts.length > 3 ? parts[3] : "";
+                    final lat = double.tryParse(parts.length > 4 ? parts[4] : "");
+                    final lng = double.tryParse(parts.length > 5 ? parts[5] : "");
+                    final crowdInfo = parts.length > 6 ? parts[6] : "";
+
+                    return Column(
+                      children: [
+                        if (showDateSeparator)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatDateSeparator(msg["created_at"]),
+                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: GestureDetector(
+                            onTap: (lat != null && lng != null)
+                                ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => MapViewPage(lat: lat, lng: lng, title: name)),
+                              );
+                            }
+                                : null,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: primary.withOpacity(0.25)),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(color: primary.withOpacity(0.12), shape: BoxShape.circle),
+                                    child: Icon(Icons.landscape_rounded, size: 18, color: primary),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          crowdInfo.isNotEmpty ? "$catL · $catM · $crowdInfo" : "$catL · $catM",
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (lat != null && lng != null)
+                                    Icon(Icons.map_rounded, size: 16, color: Colors.grey.shade400),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     );
 
@@ -3697,6 +3835,545 @@ class _AttachTile extends StatelessWidget {
 
       ),
 
+    );
+
+  }
+
+}
+
+class _SpotListDialogContent extends StatefulWidget {
+
+  final String regionName;
+  final int roomId;
+  final int userId;
+  final Color primary;
+  final VoidCallback onSent;
+
+  const _SpotListDialogContent({
+    required this.regionName,
+    required this.roomId,
+    required this.userId,
+    required this.primary,
+    required this.onSent,
+  });
+
+  @override
+  State<_SpotListDialogContent> createState() => _SpotListDialogContentState();
+
+}
+
+enum _ChatSpotTab { tour, leisure, shopping, lodging }
+
+class _SpotListDialogContentState extends State<_SpotListDialogContent> {
+
+  _ChatSpotTab selectedTab = _ChatSpotTab.tour;
+
+  bool showDetail = false;
+
+  Map<String, dynamic>? selectedSpot;
+
+  double? crowdRate;
+
+  Future<List<Map<String, dynamic>>>? _hubFuture;
+
+  List<Map<String, String>>? _crowdSpots;
+
+  final Map<String, WebViewController> _mapControllers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _hubFuture = _fetchAll();
+    _loadCrowdData();
+  }
+
+  String _lastMonthYm() {
+    final now = DateTime.now();
+    final d = DateTime(now.year, now.month - 2, 1);
+    return "${d.year}${d.month.toString().padLeft(2, '0')}";
+  }
+
+  Future<List<String>> _fetchSignguCdList() async {
+
+    final url = '${dotenv.env['PHP_URL']}information.php?regionname=${Uri.encodeComponent(widget.regionName)}';
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode != 200) return [];
+
+    final data = jsonDecode(response.body);
+
+    if (data['success'] != true) return [];
+
+    final String raw = (data['signguCd'] ?? '').toString();
+
+    return raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAll() async {
+
+    final signguCdList = await _fetchSignguCdList();
+
+    if (signguCdList.isEmpty) return [];
+
+    final baseYm = _lastMonthYm();
+
+    final Set<String> seen = {};
+
+    final List<Map<String, dynamic>> all = [];
+
+    for (final cd in signguCdList) {
+
+      try {
+
+        final url = '${dotenv.env['PHP_URL']}api_zoongsim.php'
+            '?areaCd=44&signguCd=${Uri.encodeComponent(cd)}&baseYm=$baseYm&numOfRows=1000';
+
+        final response = await http.get(Uri.parse(url));
+
+        if (response.statusCode != 200) continue;
+
+        final data = jsonDecode(response.body);
+
+        if (data['success'] != true) continue;
+
+        final itemsContainer = data['data']?['response']?['body']?['items'];
+
+        if (itemsContainer == null || itemsContainer is String) continue;
+
+        final rawItems = itemsContainer['item'];
+
+        if (rawItems == null) continue;
+
+        final items = (rawItems is List) ? rawItems : [rawItems];
+
+        for (final raw in items) {
+
+          final item = Map<String, dynamic>.from(raw);
+
+          final name = (item['hubTatsNm'] ?? '').toString();
+
+          if (name.isEmpty || seen.contains(name)) continue;
+
+          seen.add(name);
+
+          all.add(item);
+
+        }
+
+      } catch (e) {}
+
+    }
+
+    return all;
+
+  }
+
+  Future<void> _loadCrowdData() async {
+
+    try {
+
+      final url = '${dotenv.env['PHP_URL']}api_people.php?regionname=${Uri.encodeComponent(widget.regionName)}';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body);
+
+      if (data['error'] != null) return;
+
+      final itemsContainer = data['response']?['body']?['items'];
+
+      if (itemsContainer == null || itemsContainer is String) return;
+
+      final items = itemsContainer['item'];
+
+      if (items == null) return;
+
+      final list = (items is List) ? items : [items];
+
+      final spots = list.map((item) => {
+        "name": (item['tAtsNm'] ?? '').toString(),
+        "rate": (item['cnctrRate'] ?? '').toString(),
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() => _crowdSpots = List<Map<String, String>>.from(spots));
+
+    } catch (e) {}
+
+  }
+
+  String _cleanName(String raw) {
+    String c = raw.replaceAll(RegExp(r'[\(（][^\)）]*[\)）]'), '');
+    c = c.replaceAll(widget.regionName, '');
+    return c.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  List<String> _buildCandidates(String cleaned, String raw) {
+    final s = <String>{};
+    if (cleaned.isNotEmpty) {
+      s.add(cleaned);
+      final noSpace = cleaned.replaceAll(' ', '');
+      if (noSpace.isNotEmpty) s.add(noSpace);
+      for (final w in cleaned.split(' ')) {
+        if (w.trim().length >= 2) s.add(w.trim());
+      }
+    }
+    if (raw.isNotEmpty) s.add(raw);
+    return s.toList();
+  }
+
+  double? _matchCrowd(String hubTatsNm) {
+
+    if (_crowdSpots == null) return null;
+
+    for (final crowd in _crowdSpots!) {
+
+      final crowdName = crowd['name'] ?? '';
+
+      if (crowdName.isEmpty) continue;
+
+      final candidates = _buildCandidates(_cleanName(crowdName), crowdName);
+
+      for (final c in candidates) {
+
+        if (c.isNotEmpty && hubTatsNm.contains(c)) {
+          return double.tryParse(crowd['rate'] ?? '');
+        }
+
+      }
+
+    }
+
+    return null;
+
+  }
+
+  _ChatSpotTab? _classify(String mclsNm) {
+    if (mclsNm == '숙박') return _ChatSpotTab.lodging;
+    if (mclsNm == '레저스포츠') return _ChatSpotTab.leisure;
+    if (mclsNm == '쇼핑') return _ChatSpotTab.shopping;
+    if (mclsNm.endsWith('관광')) return _ChatSpotTab.tour;
+    return null;
+  }
+
+  WebViewController _getMapController(String key, double lat, double lng) {
+
+    if (_mapControllers.containsKey(key)) return _mapControllers[key]!;
+
+    final jsKey = dotenv.env['kakaojava'] ?? '';
+
+    final html = """
+    <!DOCTYPE html><html><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>html,body,#map{width:100%;height:100%;margin:0;padding:0;}</style>
+    </head><body><div id="map"></div>
+    <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=$jsKey"></script>
+    <script>
+      try{
+        var pos=new kakao.maps.LatLng($lat,$lng);
+        var map=new kakao.maps.Map(document.getElementById('map'),{center:pos,level:4,draggable:false,scrollwheel:false});
+        map.setZoomable(false);
+        new kakao.maps.Marker({position:pos}).setMap(map);
+        setTimeout(function(){map.relayout();map.setCenter(pos);},150);
+      }catch(e){}
+    </script></body></html>
+    """;
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
+      ..loadHtmlString(html);
+
+    _mapControllers[key] = controller;
+
+    return controller;
+
+  }
+
+  Future<void> _sendToChat() async {
+
+    if (selectedSpot == null) return;
+
+    final name = (selectedSpot!['hubTatsNm'] ?? '').toString();
+    final catL = (selectedSpot!['hubCtgryLclsNm'] ?? '').toString();
+    final catM = (selectedSpot!['hubCtgryMclsNm'] ?? '').toString();
+    final mapX = (selectedSpot!['mapX'] ?? '').toString();
+    final mapY = (selectedSpot!['mapY'] ?? '').toString();
+
+    final crowdText = crowdRate != null ? "혼잡도 ${crowdRate!.toStringAsFixed(1)}%" : "";
+
+    final message = "SPOT|$name|$catL|$catM|$mapY|$mapX|$crowdText";
+
+    try {
+
+      await http.post(
+        Uri.parse("${dotenv.env['PHP_URL']}send_message.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "room_id": widget.roomId,
+          "user_id": widget.userId,
+          "message": message,
+        }),
+      );
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      widget.onSent();
+
+    } catch (e) {}
+
+  }
+
+  IconData _categoryIcon(String c) {
+    if (c.contains("숙박")) return Icons.hotel_rounded;
+    if (c.contains("쇼핑")) return Icons.shopping_bag_rounded;
+    if (c.contains("관광")) return Icons.landscape_rounded;
+    return Icons.place_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+        child: showDetail ? _buildDetail() : _buildList(),
+      ),
+    );
+
+  }
+
+  Widget _buildList() {
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text("${widget.regionName} 관광지", style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.black87)),
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 10),
+
+        Row(
+          children: [
+            Expanded(child: _tab("관광", _ChatSpotTab.tour)),
+            const SizedBox(width: 6),
+            Expanded(child: _tab("레저스포츠", _ChatSpotTab.leisure)),
+            const SizedBox(width: 6),
+            Expanded(child: _tab("쇼핑", _ChatSpotTab.shopping)),
+            const SizedBox(width: 6),
+            Expanded(child: _tab("숙박", _ChatSpotTab.lodging)),
+          ],
+        ),
+
+        const SizedBox(height: 10),
+
+        Expanded(
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _hubFuture,
+            builder: (context, snapshot) {
+
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(child: CircularProgressIndicator(color: widget.primary));
+              }
+
+              final all = snapshot.data ?? [];
+
+              final filtered = all.where((item) => _classify((item['hubCtgryMclsNm'] ?? '').toString()) == selectedTab).toList();
+
+              filtered.sort((a, b) {
+                final ra = int.tryParse((a['hubRank'] ?? '999').toString()) ?? 999;
+                final rb = int.tryParse((b['hubRank'] ?? '999').toString()) ?? 999;
+                return ra.compareTo(rb);
+              });
+
+              if (filtered.isEmpty) {
+                return Center(child: Text("해당하는 장소가 없습니다", style: TextStyle(color: Colors.grey.shade500, fontSize: 13)));
+              }
+
+              return ListView.separated(
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+
+                  final item = filtered[index];
+
+                  final name = (item['hubTatsNm'] ?? '').toString();
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      setState(() {
+                        selectedSpot = item;
+                        crowdRate = _matchCrowd(name);
+                        showDetail = true;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(color: const Color(0xFFF7F7F9), borderRadius: BorderRadius.circular(14)),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
+                          Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+                        ],
+                      ),
+                    ),
+                  );
+
+                },
+              );
+
+            },
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _tab(String label, _ChatSpotTab tab) {
+
+    final bool selected = selectedTab == tab;
+
+    return GestureDetector(
+      onTap: () => setState(() => selectedTab = tab),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? widget.primary : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? widget.primary : Colors.grey.shade200),
+        ),
+        child: Center(
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: selected ? Colors.white : Colors.grey.shade500)),
+        ),
+      ),
+    );
+
+  }
+
+  Widget _buildDetail() {
+
+    final item = selectedSpot!;
+
+    final name = (item['hubTatsNm'] ?? '').toString();
+    final catL = (item['hubCtgryLclsNm'] ?? '').toString();
+    final catM = (item['hubCtgryMclsNm'] ?? '').toString();
+    final mapX = double.tryParse((item['mapX'] ?? '').toString());
+    final mapY = double.tryParse((item['mapY'] ?? '').toString());
+    final hasLocation = mapX != null && mapY != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+
+        Row(
+          children: [
+            IconButton(
+              onPressed: () => setState(() => showDetail = false),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+            Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+            IconButton(onPressed: () => Navigator.pop(context), icon: Icon(Icons.close_rounded, color: Colors.grey.shade400)),
+          ],
+        ),
+
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+                Row(
+                  children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(color: widget.primary.withOpacity(0.12), shape: BoxShape.circle),
+                      child: Icon(_categoryIcon(catL), color: widget.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    Chip(label: Text(catL, style: const TextStyle(fontSize: 12))),
+                    if (catM.isNotEmpty && catM != catL) Chip(label: Text(catM, style: const TextStyle(fontSize: 12))),
+                    if (crowdRate != null) Chip(label: Text("혼잡도 ${crowdRate!.toStringAsFixed(1)}%", style: const TextStyle(fontSize: 12))),
+                  ],
+                ),
+
+                if (hasLocation) ...[
+
+                  const SizedBox(height: 14),
+
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => MapViewPage(lat: mapY, lng: mapX, title: name)));
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: SizedBox(
+                        height: 130,
+                        child: IgnorePointer(
+                          child: WebViewWidget(controller: _getMapController(name, mapY, mapX)),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                ],
+
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _sendToChat,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            icon: const Icon(Icons.send_rounded, color: Colors.white, size: 16),
+            label: const Text("채팅방 전송", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+
+      ],
     );
 
   }

@@ -210,7 +210,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 child: const Text(
-                  '이 위치로 보내기',
+                  '위치 지정',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ),

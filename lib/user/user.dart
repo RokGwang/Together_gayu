@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../tab_widget/widget.dart';
-import 'withdraw.dart';
+import 'user_withdraw.dart';
 import 'user_update.dart';
 import 'user_changePW.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';

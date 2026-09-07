@@ -25,7 +25,11 @@ class _SignupPageState extends State<SignupPage> {
   bool privacyAgreed = false;
   bool marketingAgreed = false;
 
-  final String serverUrl = "${dotenv.env['PHP_URL']}signup.php";
+  bool? isEmailAvailable; // null=확인 안 함, true=사용 가능, false=중복
+  bool isCheckingEmail = false;
+  String? lastCheckedEmail; // 마지막으로 확인한 이메일 (재입력 시 재확인 유도)
+
+  final String serverUrl = "${dotenv.env['PHP_URL']}user_signup.php";
 
   bool get allRequiredAgreed => termsAgreed && privacyAgreed;
 
@@ -40,19 +44,94 @@ class _SignupPageState extends State<SignupPage> {
     });
 
   }
+  Future<void> checkEmailDuplicate() async {
+
+    final email = emailController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("이메일을 입력해주세요")),
+      );
+      return;
+    }
+
+    // 간단한 형식 검증
+    final emailRegex = RegExp(r'^[\w\.\-]+@[\w\-]+\.[\w\-\.]+$');
+
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("올바른 이메일 형식이 아닙니다")),
+      );
+      return;
+    }
+
+    setState(() => isCheckingEmail = true);
+
+    try {
+
+      final url = '${dotenv.env['PHP_URL']}check_duplicate.php?email=${Uri.encodeComponent(email)}';
+
+      final response = await http.get(Uri.parse(url));
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (data["success"] == true) {
+
+        setState(() {
+          isEmailAvailable = data["available"] == true;
+          lastCheckedEmail = email;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "")),
+        );
+
+      } else {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "중복 확인에 실패했습니다")),
+        );
+
+      }
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 발생: $e")),
+      );
+
+    } finally {
+
+      if (!mounted) return;
+
+      setState(() => isCheckingEmail = false);
+
+    }
+
+  }
 
   Future<void> signup() async {
-
     if (emailController.text.trim().isEmpty ||
         passwordController.text.trim().isEmpty ||
         nicknameController.text.trim().isEmpty) {
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("모든 항목을 입력해주세요")),
       );
-
       return;
+    }
 
+    // ⭐ 이메일 중복확인을 안 했거나, 확인 후 이메일을 다시 수정한 경우 재확인 요구
+    final currentEmail = emailController.text.trim();
+
+    if (isEmailAvailable != true || lastCheckedEmail != currentEmail) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("이메일 중복확인을 해주세요")),
+      );
+      return;
     }
 
     setState(() => isLoading = true);
@@ -254,6 +333,12 @@ class _SignupPageState extends State<SignupPage> {
                     TextField(
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
+                      onChanged: (_) {
+                        // ⭐ 이메일을 다시 수정하면 중복확인 결과를 초기화
+                        if (isEmailAvailable != null) {
+                          setState(() => isEmailAvailable = null);
+                        }
+                      },
                       decoration: InputDecoration(
                         hintText: '이메일',
                         hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
@@ -267,7 +352,54 @@ class _SignupPageState extends State<SignupPage> {
                         ),
                       ),
                     ),
-
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: isEmailAvailable == null
+                              ? const SizedBox.shrink()
+                              : Row(
+                            children: [
+                              Icon(
+                                isEmailAvailable! ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                size: 14,
+                                color: isEmailAvailable! ? Colors.green : Colors.redAccent,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isEmailAvailable! ? "사용 가능한 이메일이에요" : "이미 사용 중인 이메일이에요",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isEmailAvailable! ? Colors.green : Colors.redAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          height: 32,
+                          child: OutlinedButton(
+                            onPressed: isCheckingEmail ? null : checkEmailDuplicate,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              side: BorderSide(color: primary.withOpacity(0.4)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: isCheckingEmail
+                                ? SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                            )
+                                : Text(
+                              "중복확인",
+                              style: TextStyle(fontSize: 12, color: primary, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
 
                     TextField(

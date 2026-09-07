@@ -22,8 +22,8 @@ class _LoginPageState extends State<LoginPage> {
   bool obscurePassword = true;
   bool isLoading = false;
   bool isKakaoLoading = false;
-  final String serverUrl = "${dotenv.env['PHP_URL']}login.php";
-  final String kakaoServerUrl = "${dotenv.env['PHP_URL']}kakao_login.php";
+  final String serverUrl = "${dotenv.env['PHP_URL']}user_login.php";
+  final String kakaoServerUrl = "${dotenv.env['PHP_URL']}user_kakao_login.php";
 
   Future<void> login() async {
     if (emailController.text.trim().isEmpty || passwordController.text.trim().isEmpty) {

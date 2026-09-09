@@ -5,6 +5,7 @@ import 'chat.dart';
 import '../tab_widget/widget.dart';
 import '../tab_widget/tab_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:async';
 
 class MyChatPage extends StatefulWidget {
   final int userId;
@@ -40,6 +41,8 @@ class _MyChatPageState extends State<MyChatPage> {
 
   List<dynamic> rooms = [];
 
+  Timer? _pollTimer; // ⭐ 추가
+
   Map<String, List<dynamic>> groupedRooms = {};
 
   bool isLoading = true;
@@ -48,24 +51,26 @@ class _MyChatPageState extends State<MyChatPage> {
 
   @override
   void initState() {
-
     super.initState();
-
     loadRooms();
-
     AppTabController.currentIndex.addListener(_onTabChanged);
     AppTabController.chatRefreshTrigger.addListener(_onRefreshTriggered);
 
+    // ⭐ 추가: 4초마다 목록 자동 새로고침 (상대가 메시지를 보내면 실시간으로 반영)
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      // ⭐ '내 채팅' 탭을 보고 있을 때만 폴링해서 불필요한 요청 방지
+      if (AppTabController.currentIndex.value == 1) {
+        loadRooms();
+      }
+    });
   }
 
   @override
   void dispose() {
-
+    _pollTimer?.cancel(); // ⭐ 추가
     AppTabController.currentIndex.removeListener(_onTabChanged);
     AppTabController.chatRefreshTrigger.removeListener(_onRefreshTriggered);
-
     super.dispose();
-
   }
 
   void _onTabChanged() {

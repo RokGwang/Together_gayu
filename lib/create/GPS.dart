@@ -951,7 +951,7 @@ class _GPSPageState extends State<GPSPage> with TickerProviderStateMixin {
                 const SizedBox(height: 8),
 
                 Text(
-                  '${currentRadiusKm}km 이내에서 "${widget.endPlace}"로\n같이 이동할 사람을 찾고 있어요',
+                  '${currentRadiusKm}km 이내에서 "${widget.endPlace}"로\n함께 할 사람을 찾고 있어요',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,

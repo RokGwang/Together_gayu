@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../tab_widget/widget.dart';
 import 'user_withdraw.dart';
@@ -77,15 +76,15 @@ class _UserPageState extends State<UserPage> {
     }
   }
 
-  Future<void> _sendInquiryEmail() async {
-    final uri = Uri(
-      scheme: 'mailto',
-      path: 'pugguukk@gmail.com',
-      query: 'subject=${Uri.encodeComponent("[같이가유] 문의하기")}',
+  void _openInquiryDialog() {
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _InquiryDialogContent(
+        primary: primary,
+        userId: widget.userId,
+      ),
     );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
   }
 
   void _showPolicyDialog(String title, String content) {
@@ -329,7 +328,7 @@ class _UserPageState extends State<UserPage> {
                         "4. 위치정보: 실시간 매칭 이용 시에만 일시적으로 수집하며, 매칭 종료 즉시 파기합니다.",
                   ),
                 ),
-                _menuTile(icon: Icons.mail_outline_rounded, label: "문의하기", onTap: _sendInquiryEmail),
+                _menuTile(icon: Icons.mail_outline_rounded, label: "문의하기", onTap: _openInquiryDialog),
                 _menuTile(icon: Icons.info_outline_rounded, label: "앱 버전", trailingText: "1.0.0", onTap: null),
               ]),
 
@@ -377,4 +376,322 @@ class _UserPageState extends State<UserPage> {
       bottomNavigationBar: BottomWidget(userId: widget.userId),
     );
   }
+}
+enum _InquiryStep { input, confirm, submitted }
+
+class _InquiryDialogContent extends StatefulWidget {
+
+  final Color primary;
+  final int userId;
+
+  const _InquiryDialogContent({
+    required this.primary,
+    required this.userId,
+  });
+
+  @override
+  State<_InquiryDialogContent> createState() => _InquiryDialogContentState();
+
+}
+
+class _InquiryDialogContentState extends State<_InquiryDialogContent> {
+
+  _InquiryStep step = _InquiryStep.input;
+
+  final TextEditingController contentController = TextEditingController();
+
+  bool isSubmitting = false;
+
+  @override
+  void dispose() {
+    contentController.dispose();
+    super.dispose();
+  }
+
+  bool get canProceed => contentController.text.trim().isNotEmpty;
+
+  Future<void> _submitInquiry() async {
+
+    setState(() => isSubmitting = true);
+
+    try {
+
+      final response = await http.post(
+        Uri.parse("${dotenv.env['PHP_URL']}user_report.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "user_id": widget.userId,
+          "content": contentController.text.trim(),
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (data["success"] == true) {
+
+        setState(() {
+          step = _InquiryStep.submitted;
+          isSubmitting = false;
+        });
+
+      } else {
+
+        setState(() => isSubmitting = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "문의 접수에 실패했습니다")),
+        );
+
+      }
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      setState(() => isSubmitting = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 발생: $e")),
+      );
+
+    }
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          child: _buildStepView(),
+        ),
+      ),
+    );
+
+  }
+
+  Widget _buildStepView() {
+
+    switch (step) {
+      case _InquiryStep.input:
+        return _buildInputStep();
+      case _InquiryStep.confirm:
+        return _buildConfirmStep();
+      case _InquiryStep.submitted:
+        return _buildSubmittedView();
+    }
+
+  }
+
+  Widget _buildInputStep() {
+
+    return Column(
+      key: const ValueKey('input'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        Row(
+          children: [
+
+            const Expanded(
+              child: Text(
+                "문의하기",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87),
+              ),
+            ),
+
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+
+          ],
+        ),
+
+        const SizedBox(height: 4),
+
+        Text(
+          "궁금한 점이나 불편한 점을 남겨주세요",
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+        ),
+
+        const SizedBox(height: 16),
+
+        TextField(
+          controller: contentController,
+          maxLines: 6,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: "문의 내용을 입력해주세요",
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+            filled: true,
+            fillColor: const Color(0xFFF7F7F9),
+            contentPadding: const EdgeInsets.all(14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: canProceed ? () => setState(() => step = _InquiryStep.confirm) : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: canProceed ? widget.primary : Colors.grey.shade300,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text("제출", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _buildConfirmStep() {
+
+    return Column(
+      key: const ValueKey('confirm'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: widget.primary.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.mail_outline_rounded, color: widget.primary, size: 26),
+        ),
+
+        const SizedBox(height: 16),
+
+        const Text(
+          "정말 제출하시겠습니까?",
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87),
+        ),
+
+        const SizedBox(height: 8),
+
+        Text(
+          "제출 후에는 내용을 수정할 수 없어요",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+        ),
+
+        const SizedBox(height: 24),
+
+        Row(
+          children: [
+
+            Expanded(
+              child: OutlinedButton(
+                onPressed: isSubmitting ? null : () => setState(() => step = _InquiryStep.input),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text("아니요", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600)),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: ElevatedButton(
+                onPressed: isSubmitting ? null : _submitInquiry,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: isSubmitting
+                    ? const SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : const Text("예", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+            ),
+
+          ],
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _buildSubmittedView() {
+
+    return Column(
+      key: const ValueKey('submitted'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
+        ),
+
+        const SizedBox(height: 16),
+
+        const Text(
+          "문의가 접수되었습니다! 감사합니다.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
+        ),
+
+        const SizedBox(height: 24),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text("확인", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
 }

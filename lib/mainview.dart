@@ -1290,7 +1290,6 @@ class _AdvisorDialogContentState extends State<_AdvisorDialogContent> {
 
   @override
   Widget build(BuildContext context) {
-
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -1299,14 +1298,18 @@ class _AdvisorDialogContentState extends State<_AdvisorDialogContent> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
         ),
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          child: _buildStepContent(),
+        constraints: BoxConstraints( // ⭐ 추가: 화면을 넘지 않도록 최대 높이 제한
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: SingleChildScrollView( // ⭐ 추가: 넘치면 스크롤되도록 (오버플로우 자체를 방지)
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            child: _buildStepContent(),
+          ),
         ),
       ),
     );
-
   }
 
   Widget _buildStepContent() {

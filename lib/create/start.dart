@@ -258,7 +258,7 @@ class _StartPageState extends State<StartPage> {
           ),
           child: Row(
             children: [
-              OutlinedButton.icon(
+              /*OutlinedButton.icon(
                 onPressed: () => goToEnd(startPlace: null),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
@@ -267,6 +267,21 @@ class _StartPageState extends State<StartPage> {
                 ),
                 icon: Icon(Icons.bolt_rounded, color: primary, size: 18),
                 label: Text('빠르게 찾기', style: TextStyle(color: primary, fontWeight: FontWeight.w700)),
+              ),*/
+              OutlinedButton.icon(
+                onPressed: () {
+                  // ⭐ 위치기반서비스 비신고 상태 대응: GPS 매칭 진입 차단
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("위치기반서비스사업자 신고 승인 대기중..\n현재 이용할 수 없습니다")),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  side: BorderSide(color: Colors.grey.shade300), // ⭐ 잠금 표시(회색)
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: Icon(Icons.bolt_rounded, color: Colors.grey.shade400, size: 18), // ⭐ 회색
+                label: Text('빠르게 찾기', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w700)), // ⭐ 회색
               ),
               const SizedBox(width: 10),
               Expanded(

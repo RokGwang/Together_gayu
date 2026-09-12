@@ -9,6 +9,7 @@ import '../tab_widget/tab_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'location_picker.dart';
 import '../map_view.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class ChatPage extends StatefulWidget {
   final int roomId;
@@ -49,6 +50,7 @@ class _ChatPageState extends State<ChatPage> {
   bool timeExpiredNotified = false;
   bool isLeaving = false; // ⭐ 추가: 자발적으로 나가는 중인지 표시
   Timer? pollTimer;
+  IO.Socket? _socket;
 
   final Map<int, WebViewController> _locationControllers = {};
 
@@ -56,14 +58,69 @@ class _ChatPageState extends State<ChatPage> {
   void initState() {
     super.initState();
     loadMessages(initial: true);
-    pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _connectSocket(); // ⭐ 추가
+
+    // ⭐ 소켓이 즉시 알림을 쏴주므로, 폴링은 "소켓이 끊겼을 때의 안전망" 역할로 주기를 늘림
+    pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
       loadMessages(initial: false);
     });
+  }
+
+// ⭐ 추가: 소켓 연결 및 이벤트 구독
+  void _connectSocket() {
+
+    _socket = IO.io(
+      'http://35.216.34.21:3001',
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .build(),
+    );
+
+    _socket!.connect();
+
+    _socket!.onConnect((_) {
+      _socket!.emit('join_room', {
+        'room_id': widget.roomId,
+        'user_id': widget.userId,
+      });
+    });
+
+    // ⭐ 누군가 메시지를 보냈을 때 (chat_emoji_send.php 등에서 notifyRoomUpdate 호출됨)
+    _socket!.on('new_message', (_) {
+      if (!mounted) return;
+      loadMessages(initial: false);
+    });
+
+    // ⭐ 핵심: 누군가 읽었을 때 -> 즉시 재조회해서 안읽음 숫자를 실시간으로 갱신
+    _socket!.on('read_updated', (_) {
+      if (!mounted) return;
+      loadMessages(initial: false);
+    });
+
+    _socket!.on('member_left', (_) {
+      if (!mounted) return;
+      loadMessages(initial: false);
+    });
+
+    _socket!.on('room_deleted', (_) {
+      if (!mounted || roomDeletedHandled) return;
+      roomDeletedHandled = true;
+      handleRoomDeleted();
+    });
+
+  }
+  // ⭐ 위치기반서비스 비신고 상태 대응: 위치 전송 기능 일시 잠금
+  void _showFeatureLockedNotice() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("위치기반서비스사업자 신고 승인 대기중..\n현재 이용할 수 없습니다")),
+    );
   }
 
   @override
   void dispose() {
     pollTimer?.cancel();
+    _socket?.dispose(); // ⭐ 추가
     messageController.dispose();
     scrollController.dispose();
     amountController.dispose();
@@ -473,10 +530,10 @@ class _ChatPageState extends State<ChatPage> {
                   child: _AttachTile(
                     icon: Icons.location_on_rounded,
                     label: "지도",
-                    color: primary,
+                    color: Colors.grey.shade400, // ⭐ 잠금 상태 표시(회색)
                     onTap: () {
                       Navigator.pop(context);
-                      pickAndSendLocation();
+                      _showFeatureLockedNotice(); // ⭐ pickAndSendLocation() 호출 자체를 막음
                     },
                   ),
                 ),
@@ -550,7 +607,7 @@ class _ChatPageState extends State<ChatPage> {
           builder: (context, setSheetState) {
             final List<dynamic> emojis = categories![selectedCategory] ?? [];
             return Container(
-              height: 340,
+              height: 380,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -613,7 +670,7 @@ class _ChatPageState extends State<ChatPage> {
                     )
                         : GridView.builder(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
+                        crossAxisCount: 3,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 16,
                         childAspectRatio: 0.85,
@@ -793,6 +850,41 @@ class _ChatPageState extends State<ChatPage> {
       setState(() => isAttaching = false);
     }
   }
+  // =========================
+  // 신고하기
+  // =========================
+  Future<void> showReportDialog() async {
+
+    // ⭐ 방 멤버 목록 조회 (기존 fetchMembers() 재사용)
+    final members = await fetchMembers();
+
+    if (!mounted) return;
+
+    // 나 자신을 제외한 멤버만
+    final targetMembers = members.where((m) {
+      final memberId = int.tryParse(m["user_id"].toString()) ?? -1;
+      return memberId != widget.userId;
+    }).toList();
+
+    if (targetMembers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("신고할 수 있는 참여자가 없습니다")),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      useRootNavigator: false,
+      builder: (_) => _ReportDialogContent(
+        primary: primary,
+        roomId: widget.roomId,
+        reporterId: widget.userId,
+        members: targetMembers,
+      ),
+    );
+
+  }
 
   // =========================
   // 택시비 산출
@@ -865,6 +957,16 @@ class _ChatPageState extends State<ChatPage> {
           }
 
           Future<void> pickStartLocation() async {
+            _showFeatureLockedNotice(); // ⭐ LocationPickerPage 진입 자체를 차단
+            return;
+          }
+
+          Future<void> pickEndLocation() async {
+            _showFeatureLockedNotice(); // ⭐ 잠금
+            return;
+          }
+
+          /*Future<void> pickStartLocation() async {
             final result = await Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const LocationPickerPage()),
@@ -886,7 +988,7 @@ class _ChatPageState extends State<ChatPage> {
               endLat = (result["lat"] as num).toDouble();
               endLng = (result["lng"] as num).toDouble();
             });
-          }
+          }*/
 
           void toggleStartManual() {
             setDialogState(() {
@@ -1058,15 +1160,59 @@ class _ChatPageState extends State<ChatPage> {
                       decoration: BoxDecoration(color: const Color(0xFFF7F7F9), borderRadius: BorderRadius.circular(14)),
                       child: Column(
                         children: [
-                          Text(
-                            "${formatCurrency(fareResult!)}원",
-                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: primary),
+
+                          // ⭐ 추가: 금액 옆에 작은 재계산 버튼
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+
+                              Text(
+                                "${formatCurrency(fareResult!)}원",
+                                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: primary),
+                              ),
+
+                              const SizedBox(width: 8),
+
+                              GestureDetector(
+                                onTap: () {
+                                  setDialogState(() {
+                                    // ⭐ 기존 위치 선택 상태(startManual/endManual, 좌표)는 그대로 두고
+                                    //    결과 화면만 초기화해서 위치 수정 UI로 되돌아감
+                                    hasResult = false;
+                                    errorMessage = null;
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: primary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.refresh_rounded, size: 12, color: primary),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        "재계산",
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: primary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            ],
                           ),
+
                           const SizedBox(height: 4),
+
                           Text(
                             "약 ${distanceResult!.toStringAsFixed(1)}km · ${durationResult}분 예상",
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
                           ),
+
                         ],
                       ),
                     ),
@@ -1837,8 +1983,8 @@ class _ChatPageState extends State<ChatPage> {
       final String imageUrl = "$baseUrl/${msg["message"]}";
       return Image.network(
         imageUrl,
-        width: 96,
-        height: 96,
+        width: 128,
+        height: 128,
         fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => Container(
           width: 96,
@@ -1995,12 +2141,21 @@ class _ChatPageState extends State<ChatPage> {
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.black12,
           actions: [
+            IconButton(
+              icon: Icon(Icons.flag_outlined, color: Colors.grey.shade500, size: 20), // ⭐ 추가
+              onPressed: roomInfo == null ? null : showReportDialog,
+              tooltip: "신고하기",
+            ),
             TextButton.icon(
               onPressed: roomInfo == null ? null : showSettlementDialog,
               icon: Icon(Icons.calculate_rounded, size: 18, color: primary),
               label: Text(
                 "정산",
-                style: TextStyle(color: primary, fontWeight: FontWeight.w700, fontSize: 13),
+                style: TextStyle(
+                  color: primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
               ),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -3037,4 +3192,515 @@ class _SpotListDialogContentState extends State<_SpotListDialogContent> {
       ],
     );
   }
+}
+enum _ReportStep { selectUser, selectReason, confirm }
+
+class _ReportDialogContent extends StatefulWidget {
+
+  final Color primary;
+  final int roomId;
+  final int reporterId;
+  final List<dynamic> members;
+
+  const _ReportDialogContent({
+    required this.primary,
+    required this.roomId,
+    required this.reporterId,
+    required this.members,
+  });
+
+  @override
+  State<_ReportDialogContent> createState() => _ReportDialogContentState();
+
+}
+
+class _ReportDialogContentState extends State<_ReportDialogContent> {
+
+  _ReportStep step = _ReportStep.selectUser;
+
+  Map<String, dynamic>? selectedMember;
+
+  String? selectedReasonType; // 'unpleasant' / 'payment' / 'other'
+
+  final TextEditingController otherReasonController = TextEditingController();
+
+  bool isSubmitting = false;
+
+  bool submitted = false;
+
+  static const Map<String, String> reasonLabels = {
+    "unpleasant": "불쾌감 조성 채팅 유저",
+    "payment": "금전 거래 불이행",
+    "other": "기타",
+  };
+
+  @override
+  void dispose() {
+    otherReasonController.dispose();
+    super.dispose();
+  }
+
+  bool get canProceedToConfirm {
+
+    if (selectedReasonType == null) return false;
+
+    if (selectedReasonType == "other" && otherReasonController.text.trim().isEmpty) {
+      return false;
+    }
+
+    return true;
+
+  }
+
+  Future<void> _submitReport() async {
+
+    setState(() => isSubmitting = true);
+
+    try {
+
+      final reportedId = int.tryParse(selectedMember!["user_id"].toString()) ?? 0;
+
+      final response = await http.post(
+        Uri.parse("${dotenv.env['PHP_URL']}chat_user_report.php"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "room_id": widget.roomId,
+          "reporter_id": widget.reporterId,
+          "reported_id": reportedId,
+          "reason_type": selectedReasonType,
+          "reason_detail": selectedReasonType == "other" ? otherReasonController.text.trim() : "",
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (data["success"] == true) {
+
+        setState(() {
+          submitted = true;
+          isSubmitting = false;
+        });
+
+      } else {
+
+        setState(() => isSubmitting = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data["message"] ?? "신고 접수에 실패했습니다")),
+        );
+
+      }
+
+    } catch (e) {
+
+      if (!mounted) return;
+
+      setState(() => isSubmitting = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 발생: $e")),
+      );
+
+    }
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          child: submitted ? _buildSubmittedView() : _buildStepView(),
+        ),
+      ),
+    );
+
+  }
+
+  Widget _buildStepView() {
+
+    switch (step) {
+      case _ReportStep.selectUser:
+        return _buildSelectUserStep();
+      case _ReportStep.selectReason:
+        return _buildSelectReasonStep();
+      case _ReportStep.confirm:
+        return _buildConfirmStep();
+    }
+
+  }
+
+  Widget _buildHeader(String title, {VoidCallback? onBack}) {
+
+    return Row(
+      children: [
+
+        if (onBack != null)
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          )
+        else
+          const SizedBox(width: 4),
+
+        Expanded(
+          child: Text(
+            title,
+            textAlign: onBack != null ? TextAlign.center : TextAlign.start,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87),
+          ),
+        ),
+
+        IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: Icon(Icons.close_rounded, color: Colors.grey.shade400),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _buildSelectUserStep() {
+
+    return Column(
+      key: const ValueKey('selectUser'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        _buildHeader("신고할 사용자 선택"),
+
+        const SizedBox(height: 16),
+
+        ...widget.members.map((m) {
+
+          final String name = (m["name"] ?? "알 수 없음").toString();
+
+          return InkWell(
+
+            borderRadius: BorderRadius.circular(14),
+
+            onTap: () {
+              setState(() {
+                selectedMember = Map<String, dynamic>.from(m);
+                step = _ReportStep.selectReason;
+              });
+            },
+
+            child: Container(
+
+              margin: const EdgeInsets.only(bottom: 8),
+
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F7F9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+
+              child: Row(
+                children: [
+
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: widget.primary.withOpacity(0.15),
+                    child: Text(
+                      name.isNotEmpty ? name.substring(0, 1) : "?",
+                      style: TextStyle(color: widget.primary, fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                  ),
+
+                  Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+
+                ],
+              ),
+
+            ),
+
+          );
+
+        }),
+
+      ],
+    );
+
+  }
+
+  Widget _buildSelectReasonStep() {
+
+    final String name = (selectedMember?["name"] ?? "").toString();
+
+    return Column(
+      key: const ValueKey('selectReason'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        _buildHeader(
+          "신고 사유 선택",
+          onBack: () => setState(() => step = _ReportStep.selectUser),
+        ),
+
+        const SizedBox(height: 4),
+
+        Text(
+          "$name님을 신고합니다",
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+        ),
+
+        const SizedBox(height: 16),
+
+        ...reasonLabels.entries.map((entry) {
+
+          final bool selected = selectedReasonType == entry.key;
+
+          return InkWell(
+
+            borderRadius: BorderRadius.circular(14),
+
+            onTap: () {
+              setState(() {
+                selectedReasonType = entry.key;
+              });
+            },
+
+            child: Container(
+
+              margin: const EdgeInsets.only(bottom: 8),
+
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+
+              decoration: BoxDecoration(
+                color: selected ? widget.primary.withOpacity(0.1) : const Color(0xFFF7F7F9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: selected ? widget.primary : Colors.transparent, width: 1.4),
+              ),
+
+              child: Row(
+                children: [
+
+                  Icon(
+                    selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                    size: 20,
+                    color: selected ? widget.primary : Colors.grey.shade400,
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: Text(
+                      entry.value,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? widget.primary : Colors.black87,
+                      ),
+                    ),
+                  ),
+
+                ],
+              ),
+
+            ),
+
+          );
+
+        }),
+
+        if (selectedReasonType == "other") ...[
+
+          const SizedBox(height: 4),
+
+          TextField(
+            controller: otherReasonController,
+            maxLines: 3,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: "신고 사유를 자세히 입력해주세요",
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+              filled: true,
+              fillColor: const Color(0xFFF7F7F9),
+              contentPadding: const EdgeInsets.all(14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+
+        ],
+
+        const SizedBox(height: 20),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: canProceedToConfirm
+                ? () => setState(() => step = _ReportStep.confirm)
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: canProceedToConfirm ? widget.primary : Colors.grey.shade300,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text("제출", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _buildConfirmStep() {
+
+    return Column(
+      key: const ValueKey('confirm'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.redAccent.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.flag_rounded, color: Colors.redAccent, size: 26),
+        ),
+
+        const SizedBox(height: 16),
+
+        const Text(
+          "정말 신고하시겠습니까?",
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87),
+        ),
+
+        const SizedBox(height: 8),
+
+        Text(
+          "허위 신고는 서비스 이용에 제한이 있을 수 있어요",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+        ),
+
+        const SizedBox(height: 24),
+
+        Row(
+          children: [
+
+            Expanded(
+              child: OutlinedButton(
+                onPressed: isSubmitting ? null : () => setState(() => step = _ReportStep.selectReason),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text("아니요", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600)),
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: ElevatedButton(
+                onPressed: isSubmitting ? null : _submitReport,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: isSubmitting
+                    ? const SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+                    : const Text("예", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
+            ),
+
+          ],
+        ),
+
+      ],
+    );
+
+  }
+
+  Widget _buildSubmittedView() {
+
+    return Column(
+      key: const ValueKey('submitted'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
+        ),
+
+        const SizedBox(height: 16),
+
+        const Text(
+          "신고되었습니다! 감사합니다.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
+        ),
+
+        const SizedBox(height: 24),
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: const Text("확인", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+
+      ],
+    );
+
+  }
+
 }

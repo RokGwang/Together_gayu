@@ -51,6 +51,21 @@ class _RoomPageState
     }
     return time;
   }
+  // ⭐ "2026-09-12 18:00:00" 형태를 "2026.09.12" / "18:00" 두 줄로 분리
+  Map<String, String> splitDateTime(String? raw) {
+
+    if (raw == null || raw.isEmpty) return {"date": "", "time": ""};
+
+    final dt = DateTime.tryParse(raw);
+
+    if (dt == null) return {"date": "", "time": raw};
+
+    final dateStr = "${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}";
+    final timeStr = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+
+    return {"date": dateStr, "time": timeStr};
+
+  }
 
   @override
   void initState() {
@@ -682,7 +697,61 @@ class _RoomPageState
                   color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+
+// ⭐ 추가: 선택한 방의 정보 요약
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F7F9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    Row(
+                      children: [
+                        Icon(Icons.place_rounded, size: 14, color: primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            room["start"] != null ? "${room["start"]} → ${room["end"]}" : "${room["end"]}",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Row(
+                      children: [
+                        Icon(Icons.schedule_rounded, size: 14, color: Colors.grey.shade500),
+                        const SizedBox(width: 6),
+                        Text(
+                          room["time"] == null ? "시간 조율" : formatTimeNoSeconds(room["time"]),
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(Icons.person_rounded, size: 14, color: Colors.grey.shade500),
+                        const SizedBox(width: 4),
+                        Text(
+                          "$currentPeople/$maxPeople명",
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
               const Text(
                 "채팅방에 참여하시겠습니까?",
                 textAlign: TextAlign.center,
@@ -1342,34 +1411,75 @@ class _RoomPageState
                   ),
                   const Spacer(),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
+
                             Icon(
                               Icons.schedule_rounded,
                               size: 13,
                               color: Colors.grey.shade400,
                             ),
+
                             const SizedBox(width: 4),
+
                             Expanded(
-                              child: Text(
-                                room["time"] == null
-                                    ? "시간 조율"
-                                    : formatTimeNoSeconds(room["time"]),
+                              child: room["time"] == null
+
+                                  ? Text(
+                                "시간 조율",
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: room["time"] == null
-                                      ? Colors.green.shade600
-                                      : Colors.green.shade600,
-                                  fontWeight: room["time"] == null
-                                      ? FontWeight.w700
-                                      : FontWeight.w700,
+                                  color: Colors.green.shade600,
+                                  fontWeight: FontWeight.w700,
                                 ),
+                              )
+
+                              // ⭐ 년/월/일은 윗줄, 시간은 아랫줄로 분리
+                                  : Builder(
+                                builder: (context) {
+
+                                  final parts = splitDateTime(room["time"]);
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+
+                                      Text(
+                                        parts["date"] ?? "",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          color: Colors.grey.shade500,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+
+                                      Text(
+                                        parts["time"] ?? "",
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.green.shade600,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+
+                                    ],
+                                  );
+
+                                },
                               ),
                             ),
+
                           ],
                         ),
                       ),

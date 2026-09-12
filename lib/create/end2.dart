@@ -265,7 +265,7 @@ class _End2PageState extends State<End2Page> {
                       : () {
                     final selectedEnd = places[selectedIndex]["name"].toString();
 
-                    Navigator.push(
+                    /*Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => GPSPage(
@@ -275,6 +275,10 @@ class _End2PageState extends State<End2Page> {
                           endPlace: selectedEnd,
                         ),
                       ),
+                    );*/
+                    // ⭐ 위치기반서비스 비신고 상태 대응: GPSPage 진입 차단
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("위치기반서비스사업자 신고 승인 대기중..\n현재 이용할 수 없습니다")),
                     );
                   },
                   style: OutlinedButton.styleFrom(

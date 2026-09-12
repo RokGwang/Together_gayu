@@ -18,6 +18,41 @@ class PhotoPage extends StatefulWidget {
   @override
   State<PhotoPage> createState() => _PhotoPageState();
 }
+class _StatChip extends StatelessWidget {
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+}
 
 class _PhotoPageState extends State<PhotoPage> {
   static const Color primary = Color(0xFFFF7A00);
@@ -311,46 +346,43 @@ class _PhotoPageState extends State<PhotoPage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F9),
-      appBar: AppBar(
-        title: Text(
-          '${widget.regionName}의 사진',
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-            fontSize: 18,
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: const Color(0xFFF7F7F9),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.black87),
-      ),
       body: FutureBuilder<List<dynamic>>(
         future: _photoFuture,
         builder: (context, snapshot) {
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator(color: primary));
           }
+
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.photo_outlined, size: 56, color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-                  Text(
-                    "관련 사진이 없습니다",
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500),
+            return CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(context, 0, hasPhotos: false),
+                SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.photo_outlined, size: 56, color: Colors.grey.shade300),
+                        const SizedBox(height: 12),
+                        Text(
+                          "관련 사진이 없습니다",
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             );
           }
+
           final allPhotos = snapshot.data!;
+
           final List<dynamic> photos = allPhotos.where((p) {
             final String contentId = (p['galContentId'] ?? '').toString();
             if (_favoritesOnly && !_favoriteIds.contains(contentId)) return false;
@@ -362,248 +394,353 @@ class _PhotoPageState extends State<PhotoPage> {
             }
             return true;
           }).toList();
+
           final int totalPages = (photos.length / 9).ceil();
-          return Column(
-            children: [
-              // ===== 검색창 + 즐겨찾기 토글 =====
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) {
-                            setState(() {
-                              _searchQuery = value;
-                              _resetPageToStart(); // ⭐ 검색어 변경 시 스크롤/페이지 리셋
-                            });
-                          },
-                          decoration: InputDecoration(
-                            hintText: "사진 제목으로 검색",
-                            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                            prefixIcon: Icon(Icons.search_rounded, color: Colors.grey.shade400, size: 20),
-                            suffixIcon: _searchQuery.isEmpty
-                                ? null
-                                : IconButton(
-                              icon: Icon(Icons.close_rounded, color: Colors.grey.shade400, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  _searchController.clear();
-                                  _searchQuery = "";
-                                  _resetPageToStart(); // ⭐ 검색어 초기화 시에도 리셋
-                                });
-                              },
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _favoritesOnly = !_favoritesOnly;
-                          _resetPageToStart(); // ⭐ 즐겨찾기 필터 전환 시에도 리셋
-                        });
-                      },
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: _favoritesOnly ? Colors.redAccent : Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          _favoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          color: _favoritesOnly ? Colors.white : Colors.grey.shade400,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // ===== 사진 개수 표시 =====
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                child: Row(
-                  children: [
-                    Icon(Icons.photo_library_outlined, size: 14, color: Colors.grey.shade400),
-                    const SizedBox(width: 4),
-                    Text(
-                      "${photos.length}장의 사진",
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: photos.isEmpty
-                    ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+
+          // ⭐ 그리드 타일 렌더링 해상도 계산 (흐림 현상 수정 핵심)
+          final double screenWidth = MediaQuery.of(context).size.width;
+          final double devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+          final double tileWidth = (screenWidth - 32 - 16) / 3; // 좌우 패딩 16*2 + 간격 8*2
+          final int cacheWidth = (tileWidth * devicePixelRatio).round();
+
+          return CustomScrollView(
+            slivers: [
+
+              _buildSliverAppBar(context, allPhotos.length, hasPhotos: true, heroPhoto: allPhotos.first),
+
+              // ===== 통계 칩 영역 =====
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Row(
                     children: [
-                      Icon(
-                        _favoritesOnly ? Icons.favorite_border_rounded : Icons.search_off_rounded,
-                        size: 56,
-                        color: Colors.grey.shade300,
+                      _StatChip(
+                        icon: Icons.photo_library_rounded,
+                        label: "전체 ${allPhotos.length}",
+                        color: primary,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _favoritesOnly ? "즐겨찾기한 사진이 없어요" : "검색 결과가 없어요",
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500),
+                      const SizedBox(width: 8),
+                      _StatChip(
+                        icon: Icons.favorite_rounded,
+                        label: "즐겨찾기 ${_favoriteIds.length}",
+                        color: Colors.redAccent,
                       ),
                     ],
                   ),
-                )
-                    : PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                    });
-                  },
-                  itemCount: totalPages,
-                  itemBuilder: (context, pageIndex) {
-                    final int start = pageIndex * 9;
-                    final int end = (start + 9 > photos.length) ? photos.length : start + 9;
-                    final List<dynamic> pagePhotos = photos.sublist(start, end);
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: GridView.builder(
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                        itemCount: pagePhotos.length,
-                        itemBuilder: (context, index) {
-                          final String contentId = (pagePhotos[index]['galContentId'] ?? '').toString();
-                          final bool isFavorite = _favoriteIds.contains(contentId);
-                          return InkWell(
-                            onTap: () => _showFullImage(pagePhotos[index]),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Stack(
-                              children: [
+                ),
+              ),
 
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: CachedNetworkImage(
-                                    imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(pagePhotos[index]['galWebImageUrl'] ?? '')}',
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    memCacheWidth: 200,
-                                    placeholder: (context, url) => Container(
-                                      color: Colors.grey.shade100,
-                                      child: const Center(
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+              // ===== 검색창 + 즐겨찾기 토글 =====
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: primary.withOpacity(0.08),
+                                blurRadius: 14,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (value) {
+                              setState(() {
+                                _searchQuery = value;
+                                _resetPageToStart();
+                              });
+                            },
+                            decoration: InputDecoration(
+                              hintText: "사진 제목으로 검색",
+                              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                              prefixIcon: Icon(Icons.search_rounded, color: primary, size: 20),
+                              suffixIcon: _searchQuery.isEmpty
+                                  ? null
+                                  : IconButton(
+                                icon: Icon(Icons.close_rounded, color: Colors.grey.shade400, size: 18),
+                                onPressed: () {
+                                  setState(() {
+                                    _searchController.clear();
+                                    _searchQuery = "";
+                                    _resetPageToStart();
+                                  });
+                                },
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _favoritesOnly = !_favoritesOnly;
+                            _resetPageToStart();
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: _favoritesOnly
+                                ? const LinearGradient(colors: [Colors.redAccent, Color(0xFFFF8A80)])
+                                : null,
+                            color: _favoritesOnly ? null : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_favoritesOnly ? Colors.redAccent : primary).withOpacity(0.15),
+                                blurRadius: 14,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _favoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            color: _favoritesOnly ? Colors.white : Colors.grey.shade400,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+
+              // ===== 사진 그리드 (페이지 슬라이드) =====
+              if (photos.isEmpty)
+                SliverFillRemaining(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _favoritesOnly ? Icons.favorite_border_rounded : Icons.search_off_rounded,
+                          size: 56,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _favoritesOnly ? "즐겨찾기한 사진이 없어요" : "검색 결과가 없어요",
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverFillRemaining(
+                  hasScrollBody: true,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: PageView.builder(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentPage = index;
+                            });
+                          },
+                          itemCount: totalPages,
+                          itemBuilder: (context, pageIndex) {
+
+                            final int start = pageIndex * 9;
+                            final int end = (start + 9 > photos.length) ? photos.length : start + 9;
+                            final List<dynamic> pagePhotos = photos.sublist(start, end);
+
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                              child: GridView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: pagePhotos.length,
+                                itemBuilder: (context, index) {
+
+                                  final photo = pagePhotos[index];
+                                  final String contentId = (photo['galContentId'] ?? '').toString();
+                                  final bool isFavorite = _favoriteIds.contains(contentId);
+                                  final String title = (photo['galTitle'] ?? '').toString();
+
+                                  return InkWell(
+                                    onTap: () => _showFullImage(photo),
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.06),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+
+                                            CachedNetworkImage(
+                                              imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(photo['galWebImageUrl'] ?? '')}',
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: cacheWidth, // ⭐ 흐림 현상 수정: 기기 배율 반영
+                                              placeholder: (context, url) => Container(
+                                                color: Colors.grey.shade100,
+                                                child: const Center(
+                                                  child: SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+                                                  ),
+                                                ),
+                                              ),
+                                              errorWidget: (context, url, error) => Container(
+                                                color: Colors.grey.shade100,
+                                                child: Icon(Icons.broken_image_rounded, color: Colors.grey.shade400, size: 18),
+                                              ),
+                                            ),
+
+                                            // ⭐ 하단 그라데이션 + 제목 오버레이 (빈 공간 채우기 + 정보성 강화)
+                                            if (title.isNotEmpty)
+                                              Positioned(
+                                                left: 0,
+                                                right: 0,
+                                                bottom: 0,
+                                                child: Container(
+                                                  padding: const EdgeInsets.fromLTRB(6, 14, 6, 6),
+                                                  decoration: BoxDecoration(
+                                                    gradient: LinearGradient(
+                                                      begin: Alignment.topCenter,
+                                                      end: Alignment.bottomCenter,
+                                                      colors: [
+                                                        Colors.transparent,
+                                                        Colors.black.withOpacity(0.55),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    title,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+
+                                            if (isFavorite)
+                                              Positioned(
+                                                top: 6,
+                                                right: 6,
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(4),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black.withOpacity(0.45),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 12),
+                                                ),
+                                              ),
+
+                                          ],
                                         ),
                                       ),
                                     ),
-                                    errorWidget: (context, url, error) => Container(
-                                      color: Colors.grey.shade100,
-                                      child: Icon(Icons.broken_image_rounded, color: Colors.grey.shade400, size: 18),
+                                  );
+
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      if (totalPages > 1)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: primary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    "${_currentPage + 1} / $totalPages",
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: primary),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 3,
+                                      activeTrackColor: primary,
+                                      inactiveTrackColor: Colors.grey.shade200,
+                                      thumbColor: primary,
+                                      overlayColor: primary.withOpacity(0.15),
+                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                    ),
+                                    child: Slider(
+                                      min: 0,
+                                      max: (totalPages - 1).toDouble(),
+                                      divisions: totalPages > 1 ? totalPages - 1 : 1,
+                                      value: _currentPage.toDouble().clamp(0, (totalPages - 1).toDouble()),
+                                      onChanged: (value) {
+                                        _pageController.animateToPage(
+                                          value.toInt(),
+                                          duration: const Duration(milliseconds: 300),
+                                          curve: Curves.easeInOut,
+                                        );
+                                        setState(() {
+                                          _currentPage = value.toInt();
+                                        });
+                                      },
                                     ),
                                   ),
                                 ),
-
-                                // ⭐ 그리드에도 즐겨찾기 표시(읽기 전용 뱃지)
-                                if (isFavorite)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.45),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 12),
-                                    ),
-                                  ),
-
                               ],
                             ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (totalPages > 1)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                  child: Row(
-                    children: [
-                      Text(
-                        "${_currentPage + 1}",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: primary),
-                      ),
-                      Text(
-                        " / $totalPages",
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey.shade400),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 3,
-                            activeTrackColor: primary,
-                            inactiveTrackColor: Colors.grey.shade200,
-                            thumbColor: primary,
-                            overlayColor: primary.withOpacity(0.15),
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                          ),
-                          child: Slider(
-                            min: 0,
-                            max: (totalPages - 1).toDouble(),
-                            divisions: totalPages > 1 ? totalPages - 1 : 1,
-                            value: _currentPage.toDouble().clamp(0, (totalPages - 1).toDouble()),
-                            onChanged: (value) {
-                              _pageController.animateToPage(
-                                value.toInt(),
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeInOut,
-                              );
-                              setState(() {
-                                _currentPage = value.toInt();
-                              });
-                            },
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -612,5 +749,86 @@ class _PhotoPageState extends State<PhotoPage> {
         },
       ),
     );
+  }
+
+  // ⭐ 추가: 지역 대표 사진을 배경으로 쓰는 화려한 SliverAppBar
+  Widget _buildSliverAppBar(BuildContext context, int photoCount, {required bool hasPhotos, dynamic heroPhoto}) {
+
+    return SliverAppBar(
+      expandedHeight: hasPhotos ? 220 : 100,
+      pinned: true,
+      backgroundColor: primary,
+      elevation: 0,
+      iconTheme: const IconThemeData(color: Colors.white),
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+        title: Text(
+          '${widget.regionName}의 사진',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+            fontSize: 16,
+          ),
+        ),
+        background: hasPhotos
+            ? Stack(
+          fit: StackFit.expand,
+          children: [
+
+            CachedNetworkImage(
+              imageUrl: '${dotenv.env['PHP_URL']}api_photo.php?proxy_url=${Uri.encodeComponent(heroPhoto['galWebImageUrl'] ?? '')}',
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(color: primary),
+              errorWidget: (context, url, error) => Container(color: primary),
+            ),
+
+            // ⭐ 가독성을 위한 그라데이션 오버레이
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.1),
+                    Colors.black.withOpacity(0.65),
+                  ],
+                ),
+              ),
+            ),
+
+            Positioned(
+              left: 20,
+              bottom: 44,
+              right: 20,
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.photo_library_rounded, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          "$photoCount장",
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          ],
+        )
+            : Container(color: primary),
+      ),
+    );
+
   }
 }

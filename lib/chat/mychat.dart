@@ -19,6 +19,7 @@ class MyChatPage extends StatefulWidget {
   State<MyChatPage> createState() => _MyChatPageState();
 }
 
+
 String formatTimeNoSeconds(String? time) {
 
   if (time == null) return "";
@@ -38,6 +39,13 @@ class _MyChatPageState extends State<MyChatPage> {
   static const Color primary = Color(0xFFFF7A00);
 
   static const Color mealColor = Color(0xFFFFC107); // ⭐ 식사 전용 노란색
+
+  static const Map<String, String> regionNameMap = {
+    "cheonan": "천안", "asan": "아산", "dangjin": "당진", "seosan": "서산",
+    "taean": "태안", "yesan": "예산", "hongseong": "홍성", "cheongyang": "청양",
+    "gongju": "공주", "boryeong": "보령", "buyeo": "부여", "seocheon": "서천",
+    "nonsan": "논산", "gyeryong": "계룡", "geumsan": "금산",
+  };
 
   List<dynamic> rooms = [];
 
@@ -130,15 +138,19 @@ class _MyChatPageState extends State<MyChatPage> {
     }
   }
 
+
   Map<String, List<dynamic>> groupByRegion(List<dynamic> list) {
 
     final Map<String, List<dynamic>> map = {};
 
     for (final room in list) {
 
-      final region = (room["region"] == null || room["region"].toString().isEmpty)
+      final String rawRegion = (room["region"] ?? "").toString();
+
+      // ⭐ 영문 id를 한글 지역명으로 변환, 매핑에 없으면 원본 그대로 표시
+      final String region = rawRegion.isEmpty
           ? "기타"
-          : room["region"].toString();
+          : (regionNameMap[rawRegion] ?? rawRegion);
 
       map.putIfAbsent(region, () => []);
 

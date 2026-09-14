@@ -69,7 +69,7 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
 
-      final url = '${dotenv.env['PHP_URL']}check_duplicate.php?email=${Uri.encodeComponent(email)}';
+      final url = '${dotenv.env['PHP_URL']}user_check_duplicate.php?email=${Uri.encodeComponent(email)}';
 
       final response = await http.get(Uri.parse(url));
 

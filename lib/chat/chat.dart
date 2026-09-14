@@ -2169,6 +2169,27 @@ class _ChatPageState extends State<ChatPage> {
         ),
         body: Column(
           children: [
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFFF4E5),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 14, color: Colors.orange.shade700),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        "비방·욕설·음란·광고 등 불건전 행위는 운영정책에 따라 제재될 수 있으며, 결제정보·개인정보는 절대 타인에게 공개하지 마세요.",
+                        maxLines: 1,
+                        style: TextStyle(fontSize: 10, color: Colors.orange.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: isLoading
                   ? Center(child: CircularProgressIndicator(color: primary))
